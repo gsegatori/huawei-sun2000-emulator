@@ -53,41 +53,46 @@ DEYE_ITEMS = [
 ]
 
 
-# MOCK ITEMS: valori "fisici" (PRE-imbroglio). L'imbroglio AC=(PV+AC)/2
-# viene applicato dal poller in apply_values(), quindi qui mettiamo i
-# valori REALI come se fossero letti dal Deye.
+# MOCK NOTTE: scenario PV=0 con batteria che scarica per coprire casa.
+# Test della formula AC_view = max(32080, |37001|) + clamp 37001.
 #
-# Scenario REALE (autoconsumo + surplus carica batteria):
-#   PV_real          = 4000 W (Solar atteso 4.0 kW)
-#   AC_inverter_real = 3500 W
-#   Battery_real     = PV - AC = +500 W (carica)
-#   Grid_real        = 0 W (no scambio rete)
-#   Load_real        = 3500 W
+# Scenario REALE:
+#   PV_real          = 0 W (notte, no sole)
+#   AC_inverter_real = 2000 W (inverter eroga 2 kW dalla batteria)
+#   Battery_real     = PV - AC = -2000 W (scarica 2 kW)
+#   Grid_real        = 0 W (autoconsumo perfetto da batteria)
+#   Load_real        = 2000 W
 #
-# Il poller scrivera' a 32080 il valore imbrogliato = (4000+3500)/2 = 3750.
-# La Viaris calcolera':
-#   Solar   = 4.0 kW (legge 32064 = PV reale)
-#   Battery = 2×(4000-3750) = 500 -> 0.5 kW CHARGING
-#   Home    = 2×3750 - 4000 - 0 = 3500 -> 3.5 kW  (= Load_real!)
+# Mock SCRITTO con clamp 37001:
+#   AC_mock (32080)        = (0+2000)/2 = 1000 W
+#   37001 clamped          = max(-1000, min(1000, -2000)) = -1000 W
+#                            (|-2000| > AC_mock=1000 -> clamp a -1000)
+#   correnti inverter      = AC_mock/3/V_phase per fase
+#
+# PREDIZIONI Viaris (se ipotesi max() corretta):
+#   AC_view = max(1000, |-1000|) = 1000
+#   Solar   = 0 kW
+#   Battery = 2*(0-1000) = -2000 -> 2.0 kW DISCHARGING
+#   Home    = 2*1000 - 0 - 0 = 2000 -> 2.0 kW
 #   Rete    = 0 kW
 #   SoC     = 50%
 MOCK_ITEMS: dict[str, float] = {
-    # PV input DC: PV_real = 4000 W
-    "DeyeModbusPv1Power": 2000.0,
-    "DeyeModbusPv2Power": 2000.0,
-    "DeyeModbusPvPower": 4000.0,
-    # Inverter AC output FISICO = 3500 W (il poller imbroglia automaticamente)
-    "DeyeModbusInverterAPower": 1170.0,
-    "DeyeModbusInverterBPower": 1170.0,
-    "DeyeModbusInverterCPower": 1160.0,
-    "DeyeModbusInverterTotal": 3500.0,
-    "DeyeModbusInverterACurrent": 5.4,
-    "DeyeModbusInverterBCurrent": 5.4,
-    "DeyeModbusInverterCCurrent": 5.4,
+    # Notte: PV = 0
+    "DeyeModbusPv1Power": 0.0,
+    "DeyeModbusPv2Power": 0.0,
+    "DeyeModbusPvPower": 0.0,
+    # Inverter AC eroga 2000 W dalla batteria
+    "DeyeModbusInverterAPower": 670.0,
+    "DeyeModbusInverterBPower": 670.0,
+    "DeyeModbusInverterCPower": 660.0,
+    "DeyeModbusInverterTotal": 2000.0,
+    "DeyeModbusInverterACurrent": 2.9,
+    "DeyeModbusInverterBCurrent": 2.9,
+    "DeyeModbusInverterCCurrent": 2.9,
     "DeyeModbusInverterAVoltage": 230.0,
     "DeyeModbusInverterBVoltage": 230.0,
     "DeyeModbusInverterCVoltage": 230.0,
-    # Grid meter: nessuno scambio
+    # Grid meter: nessuno scambio (autoconsumo perfetto da batteria)
     "DeyeModbusGridTotal": 0.0,
     "DeyeModbusGridAPower": 0.0,
     "DeyeModbusGridBPower": 0.0,
@@ -95,9 +100,9 @@ MOCK_ITEMS: dict[str, float] = {
     "DeyeModbusGridACurrent": 0.0,
     "DeyeModbusGridBCurrent": 0.0,
     "DeyeModbusGridCCurrent": 0.0,
-    # Load = 3500 W (= output inverter reale, no scambio rete)
-    "DeyeModbusLoadTotal": 3500.0,
-    # SoC: 50% (distinto dai round precedenti)
+    # Load = 2000 W (= output inverter, no scambio rete)
+    "DeyeModbusLoadTotal": 2000.0,
+    # SoC: 50%
     "DeyeModbusBatterySoc": 50.0,
     "DeyeModbusBatteryTemp": 28.0,
     "DeyeModbusAcTemp": 35.0,
