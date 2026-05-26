@@ -89,15 +89,29 @@ def decode_string(regs: Iterable[int]) -> str:
 # per address per leggibilita'.
 
 # Device info (30000+): valori semi-statici (boot)
+# Mappa completa (Huawei spec / huawei_solar lib).
 ADDR_MODEL_NAME = 30000          # STR(15) = 30 chars
-ADDR_NUMBER_OF_PV_STRINGS = 30071
-ADDR_RATED_POWER = 30073         # U32 (W)
-ADDR_MAX_ACTIVE_POWER = 30075    # U32 (W)
-ADDR_MAX_APPARENT_POWER = 30077  # U32 (VA)
-ADDR_MAX_REACTIVE_POWER_PER_QUADRANT = 30079  # I32 (Var) - lasciamo 0
 ADDR_SN = 30015                  # STR(10) = 20 chars
 ADDR_PN = 30025                  # STR(10) = 20 chars
 ADDR_FIRMWARE_VERSION = 30035    # STR(15) = 30 chars
+ADDR_SOFTWARE_VERSION = 30050    # STR(15) = 30 chars
+ADDR_PROTOCOL_VERSION = 30068    # U32
+ADDR_MODEL_ID = 30070            # U16 - key di discovery Huawei (6 = SUN2000-10KTL-M1)
+ADDR_NUMBER_OF_PV_STRINGS = 30071
+ADDR_NUMBER_OF_MPP_TRACKERS = 30072
+ADDR_RATED_POWER = 30073         # U32 (W)
+ADDR_MAX_ACTIVE_POWER = 30075    # U32 (W)
+ADDR_MAX_APPARENT_POWER = 30077  # U32 (VA)
+ADDR_MAX_REACTIVE_POWER_FED_TO_GRID = 30079  # I32 (Var)
+ADDR_MAX_REACTIVE_POWER_ABSORBED = 30081     # I32 (Var)
+
+# Model ID enum (selezione SUN2000-(3KTL-10KTL)-M1 family)
+MODEL_ID_SUN2000_3KTL_M1 = 1
+MODEL_ID_SUN2000_4KTL_M1 = 2
+MODEL_ID_SUN2000_5KTL_M1 = 3
+MODEL_ID_SUN2000_6KTL_M1 = 4
+MODEL_ID_SUN2000_8KTL_M1 = 5
+MODEL_ID_SUN2000_10KTL_M1 = 6
 
 # Realtime (32000+): valori dinamici aggiornati dal poller OH
 ADDR_STATE_1 = 32000                 # U16 bitfield

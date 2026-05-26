@@ -73,6 +73,22 @@ async def test_modbus_server_serves_huawei_registers():
             rr = await client.read_holding_registers(R.ADDR_BATTERY_SOC, count=1, slave=1)
             assert not rr.isError()
             assert R.decode_u16(rr.registers) == 780  # 78% * 10
+
+            # Range continuo 100 reg (come fanno Viaris/SmartLogger/HA) -
+            # devono essere TUTTI leggibili, non solo quelli che usiamo.
+            rr = await client.read_holding_registers(30000, count=100, slave=1)
+            assert not rr.isError(), f"range read 30000-30099 failed: {rr}"
+            assert len(rr.registers) == 100
+
+            # Model ID a 30070 deve essere 6 (SUN2000-10KTL-M1)
+            rr = await client.read_holding_registers(R.ADDR_MODEL_ID, count=1, slave=1)
+            assert not rr.isError()
+            assert R.decode_u16(rr.registers) == R.MODEL_ID_SUN2000_10KTL_M1
+
+            # Software version a 30050 deve essere non-zero
+            rr = await client.read_holding_registers(R.ADDR_SOFTWARE_VERSION, count=15, slave=1)
+            assert not rr.isError()
+            assert R.decode_string(rr.registers).startswith("V100R001")
         finally:
             client.close()
     finally:

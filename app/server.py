@@ -1,7 +1,9 @@
 """Server Modbus TCP che impersona un Huawei SUN2000.
 
 Architettura:
-- ModbusSparseDataBlock con i registri pre-allocati a 0
+- ModbusSequentialDataBlock pre-allocato continuo 30000-39999 (10k reg, ~20 KB)
+  -> clienti industriali (es. Viaris) chiedono range continui di 100+ reg in
+     un'unica request; con sparse + buchi otterebbero IllegalAddress.
 - ModbusSlaveContext che espone i registri come Holding Registers (FC=3)
 - Update background task che ogni POLL_INTERVAL_S legge OH e fa setValues()
 - Server gestito in lifecycle async, condivide il loop con FastAPI admin UI
@@ -13,7 +15,7 @@ import logging
 import time
 from typing import Any
 
-from pymodbus.datastore import ModbusServerContext, ModbusSlaveContext, ModbusSparseDataBlock
+from pymodbus.datastore import ModbusSequentialDataBlock, ModbusServerContext, ModbusSlaveContext
 from pymodbus.server import StartAsyncTcpServer
 
 from app import registers as R
@@ -21,6 +23,12 @@ from app.config import Settings
 from app.openhab import OpenHabClient
 
 log = logging.getLogger(__name__)
+
+# Range pre-allocato dei registri Huawei: dal 30000 (device info / model) al
+# 39999 (oltre i registri meter/battery 37xxx). 10000 reg = ~20 KB di RAM,
+# trascurabile, e copre l'intera mappa Huawei usata da app commerciali.
+_HR_BASE = 30000
+_HR_SPAN = 10000
 
 
 class HuaweiModbusEmulator:
@@ -33,12 +41,9 @@ class HuaweiModbusEmulator:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        # Allochiamo tutti i registri che useremo a 0. ModbusSparseDataBlock
-        # accetta dict {addr: value} oppure {addr: [values]}. Per semplicita'
-        # usiamo dict di singoli zero, poi setValues() popola i runtime.
-        all_addrs = self._all_used_addresses()
-        initial = {addr: 0 for addr in all_addrs}
-        self._block = ModbusSparseDataBlock(initial)
+        # Blocco continuo 30000..39999 inizializzato a 0. Riempiamo l'identita'
+        # subito; i registri runtime vengono popolati dal poller OH.
+        self._block = ModbusSequentialDataBlock(_HR_BASE, [0] * _HR_SPAN)
         self._slave = ModbusSlaveContext(hr=self._block, zero_mode=True)
         self.context = ModbusServerContext(slaves={settings.modbus_unit_id: self._slave}, single=False)
         self._populate_identity()
@@ -65,102 +70,26 @@ class HuaweiModbusEmulator:
 
     # ───── implementation ─────
 
-    def _all_used_addresses(self) -> set[int]:
-        """Tutte le address con dimensioni dovute (U32/I32 occupa 2)."""
-        s: set[int] = set()
-        # device info
-        for addr, span in [
-            (R.ADDR_MODEL_NAME, 15),
-            (R.ADDR_SN, 10),
-            (R.ADDR_PN, 10),
-            (R.ADDR_FIRMWARE_VERSION, 15),
-            (R.ADDR_NUMBER_OF_PV_STRINGS, 1),
-            (R.ADDR_RATED_POWER, 2),
-            (R.ADDR_MAX_ACTIVE_POWER, 2),
-            (R.ADDR_MAX_APPARENT_POWER, 2),
-            (R.ADDR_MAX_REACTIVE_POWER_PER_QUADRANT, 2),
-        ]:
-            for i in range(span):
-                s.add(addr + i)
-        # realtime
-        for addr, span in [
-            (R.ADDR_STATE_1, 1),
-            (R.ADDR_STATE_2, 1),
-            (R.ADDR_STATE_3, 2),
-            (R.ADDR_ALARM_1, 1),
-            (R.ADDR_ALARM_2, 1),
-            (R.ADDR_ALARM_3, 1),
-            (R.ADDR_PV1_VOLTAGE, 1),
-            (R.ADDR_PV1_CURRENT, 1),
-            (R.ADDR_PV2_VOLTAGE, 1),
-            (R.ADDR_PV2_CURRENT, 1),
-            (R.ADDR_INPUT_POWER, 2),
-            (R.ADDR_GRID_VOLTAGE_AB, 1),
-            (R.ADDR_GRID_VOLTAGE_BC, 1),
-            (R.ADDR_GRID_VOLTAGE_CA, 1),
-            (R.ADDR_GRID_VOLTAGE_A, 1),
-            (R.ADDR_GRID_VOLTAGE_B, 1),
-            (R.ADDR_GRID_VOLTAGE_C, 1),
-            (R.ADDR_GRID_CURRENT_A, 2),
-            (R.ADDR_GRID_CURRENT_B, 2),
-            (R.ADDR_GRID_CURRENT_C, 2),
-            (R.ADDR_PEAK_ACTIVE_POWER_DAY, 2),
-            (R.ADDR_ACTIVE_POWER, 2),
-            (R.ADDR_REACTIVE_POWER, 2),
-            (R.ADDR_POWER_FACTOR, 1),
-            (R.ADDR_GRID_FREQUENCY, 1),
-            (R.ADDR_EFFICIENCY, 1),
-            (R.ADDR_INTERNAL_TEMPERATURE, 1),
-            (R.ADDR_INSULATION_RESISTANCE, 1),
-            (R.ADDR_DEVICE_STATUS, 1),
-            (R.ADDR_FAULT_CODE, 1),
-            (R.ADDR_ACCUMULATED_YIELD, 2),
-            (R.ADDR_DAILY_YIELD, 2),
-        ]:
-            for i in range(span):
-                s.add(addr + i)
-        # battery
-        for addr, span in [
-            (R.ADDR_BATTERY_RUNNING_STATUS, 1),
-            (R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2),
-            (R.ADDR_BATTERY_SOC, 1),
-            (R.ADDR_BATTERY_TEMPERATURE, 1),
-            (R.ADDR_BATTERY_TOTAL_CHARGE, 2),
-            (R.ADDR_BATTERY_TOTAL_DISCHARGE, 2),
-        ]:
-            for i in range(span):
-                s.add(addr + i)
-        # meter
-        for addr, span in [
-            (R.ADDR_METER_STATUS, 1),
-            (R.ADDR_METER_GRID_VOLTAGE_A, 2),
-            (R.ADDR_METER_GRID_VOLTAGE_B, 2),
-            (R.ADDR_METER_GRID_VOLTAGE_C, 2),
-            (R.ADDR_METER_GRID_CURRENT_A, 2),
-            (R.ADDR_METER_GRID_CURRENT_B, 2),
-            (R.ADDR_METER_GRID_CURRENT_C, 2),
-            (R.ADDR_METER_ACTIVE_POWER, 2),
-            (R.ADDR_METER_REACTIVE_POWER, 2),
-            (R.ADDR_METER_POWER_FACTOR, 1),
-            (R.ADDR_METER_FREQUENCY, 1),
-            (R.ADDR_METER_POSITIVE_ACTIVE_ENERGY, 2),
-            (R.ADDR_METER_REVERSE_ACTIVE_ENERGY, 2),
-        ]:
-            for i in range(span):
-                s.add(addr + i)
-        return s
-
     def _populate_identity(self) -> None:
         s = self._settings
-        self._block.setValues(R.ADDR_MODEL_NAME, R.string_regs(s.huawei_model, 15))
-        self._block.setValues(R.ADDR_SN, R.string_regs(s.huawei_sn, 10))
-        self._block.setValues(R.ADDR_PN, R.string_regs(s.huawei_pn, 10))
-        self._block.setValues(R.ADDR_FIRMWARE_VERSION, R.string_regs(s.huawei_fw, 15))
-        self._block.setValues(R.ADDR_NUMBER_OF_PV_STRINGS, R.u16(s.huawei_pv_strings))
-        self._block.setValues(R.ADDR_RATED_POWER, R.u32(s.huawei_rated_power_w))
-        self._block.setValues(R.ADDR_MAX_ACTIVE_POWER, R.u32(s.huawei_max_active_power_w))
-        self._block.setValues(R.ADDR_MAX_APPARENT_POWER, R.u32(s.huawei_max_apparent_power_va))
-        self._block.setValues(R.ADDR_MAX_REACTIVE_POWER_PER_QUADRANT, R.i32(0))
+        b = self._block
+        # Strings device info
+        b.setValues(R.ADDR_MODEL_NAME, R.string_regs(s.huawei_model, 15))
+        b.setValues(R.ADDR_SN, R.string_regs(s.huawei_sn, 10))
+        b.setValues(R.ADDR_PN, R.string_regs(s.huawei_pn, 10))
+        b.setValues(R.ADDR_FIRMWARE_VERSION, R.string_regs(s.huawei_fw, 15))
+        b.setValues(R.ADDR_SOFTWARE_VERSION, R.string_regs(s.huawei_fw, 15))
+        # Versioning / model discovery (la Viaris e altre app si aspettano
+        # qui valori non-zero per riconoscere "Huawei").
+        b.setValues(R.ADDR_PROTOCOL_VERSION, R.u32(1))
+        b.setValues(R.ADDR_MODEL_ID, R.u16(R.MODEL_ID_SUN2000_10KTL_M1))
+        b.setValues(R.ADDR_NUMBER_OF_PV_STRINGS, R.u16(s.huawei_pv_strings))
+        b.setValues(R.ADDR_NUMBER_OF_MPP_TRACKERS, R.u16(s.huawei_mppt_count))
+        b.setValues(R.ADDR_RATED_POWER, R.u32(s.huawei_rated_power_w))
+        b.setValues(R.ADDR_MAX_ACTIVE_POWER, R.u32(s.huawei_max_active_power_w))
+        b.setValues(R.ADDR_MAX_APPARENT_POWER, R.u32(s.huawei_max_apparent_power_va))
+        b.setValues(R.ADDR_MAX_REACTIVE_POWER_FED_TO_GRID, R.i32(0))
+        b.setValues(R.ADDR_MAX_REACTIVE_POWER_ABSORBED, R.i32(0))
         # default constants
         self._block.setValues(R.ADDR_GRID_FREQUENCY, R.u16(5000))   # 50.00 Hz
         self._block.setValues(R.ADDR_EFFICIENCY, R.u16(9800))        # 98.00 %
