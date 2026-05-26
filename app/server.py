@@ -182,7 +182,14 @@ class HuaweiModbusEmulator:
             pb = g("DeyeModbusInverterBPower") or 0
             pc = g("DeyeModbusInverterCPower") or 0
             active_total_real = pa + pb + pc
-        active_total = ((pv_tot or 0) + (active_total_real or 0)) / 2  # imbroglio
+        # IMBROGLIO Viaris: la formula display cambia tra GIORNO e NOTTE.
+        # Giorno (PV>50): Viaris fa Battery=2*(PV-AC_mock), Home=2*AC_mock-PV-Grid.
+        # Notte (PV<50): Viaris RADDOPPIA internamente, come se AC_view=2*AC_mock.
+        # Quindi di notte dimezziamo ulteriormente per compensare.
+        if (pv_tot or 0) > 50:
+            active_total = ((pv_tot or 0) + (active_total_real or 0)) / 2  # giorno
+        else:
+            active_total = (active_total_real or 0) / 4  # notte: compensazione raddoppio
         b.setValues(R.ADDR_ACTIVE_POWER, R.i32(int(active_total)))
 
         # IMBROGLIO correnti inverter (32072/74/76): distribuisco AC_mock
