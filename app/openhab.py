@@ -74,8 +74,12 @@ MOCK_ITEMS: dict[str, float] = {
     "DeyeModbusPv2Power": 4500.0,
     "DeyeModbusPvPower": 9000.0,
     # Inverter AC output (32080) -> 6000 W = "Inst. power" atteso 6.0 kW
-    "DeyeModbusInverterAPower": 2000.0,
-    "DeyeModbusInverterBPower": 2000.0,
+    # Per-fase DISTINTI (somma 6000) per identificare le fasi R/S/T:
+    #   Fase A/R = 2100 W
+    #   Fase B/S = 1900 W
+    #   Fase C/T = 2000 W
+    "DeyeModbusInverterAPower": 2100.0,
+    "DeyeModbusInverterBPower": 1900.0,
     "DeyeModbusInverterCPower": 2000.0,
     "DeyeModbusInverterTotal": 6000.0,
     # Correnti inverter univocamente identificabili per fase
@@ -87,10 +91,14 @@ MOCK_ITEMS: dict[str, float] = {
     "DeyeModbusInverterBVoltage": 230.0,
     "DeyeModbusInverterCVoltage": 240.0,
     # Grid meter (37113) -> -2000 W = "Rete" atteso -2.0 kW (export)
+    # Per-fase DISTINTI (somma -2000):
+    #   Fase A/R = -700 W
+    #   Fase B/S = -600 W
+    #   Fase C/T = -700 W
     "DeyeModbusGridTotal": -2000.0,
-    "DeyeModbusGridAPower": -667.0,
-    "DeyeModbusGridBPower": -667.0,
-    "DeyeModbusGridCPower": -666.0,
+    "DeyeModbusGridAPower": -700.0,
+    "DeyeModbusGridBPower": -600.0,
+    "DeyeModbusGridCPower": -700.0,
     "DeyeModbusGridACurrent": 3.0,
     "DeyeModbusGridBCurrent": 2.9,
     "DeyeModbusGridCCurrent": 2.8,
