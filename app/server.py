@@ -13,16 +13,21 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import deque
 from typing import Any
 
 from pymodbus.datastore import ModbusSequentialDataBlock, ModbusServerContext, ModbusSlaveContext
-from pymodbus.server import StartAsyncTcpServer
+from pymodbus.server import ModbusTcpServer
 
 from app import registers as R
 from app.config import Settings
 from app.openhab import OpenHabClient
 
 log = logging.getLogger(__name__)
+
+# Ring buffer (process-wide) delle ultime PDU Modbus ricevute. Utile per
+# capire cosa client esterni (Viaris, FusionSolar...) leggono in pratica.
+RECENT_PDU: deque = deque(maxlen=200)
 
 # Range pre-allocato dei registri Huawei: dal 30000 (device info / model) al
 # 39999 (oltre i registri meter/battery 37xxx). 10000 reg = ~20 KB di RAM,
@@ -233,11 +238,36 @@ class HuaweiModbusEmulator:
         self._last_error = err
 
 
+def _trace_request(request, *client_addr):
+    """Logga e accoda ogni request Modbus in arrivo (pymodbus 3.7 API).
+    Signature: (request, host, port) — vedi pymodbus.server.requesthandler."""
+    fc = getattr(request, "function_code", None)
+    addr = getattr(request, "address", None)
+    cnt = getattr(request, "count", None)
+    uid = getattr(request, "slave_id", None)
+    entry = {
+        "ts": time.time(),
+        "fc": fc,
+        "address": addr,
+        "count": cnt,
+        "unit_id": uid,
+        "client": ":".join(str(p) for p in client_addr) if client_addr else None,
+    }
+    RECENT_PDU.append(entry)
+    log.info("Modbus REQ fc=%s addr=%s count=%s unit=%s client=%s",
+             fc, addr, cnt, uid, entry["client"])
+
+
 async def run_modbus_server(emulator: HuaweiModbusEmulator, host: str, port: int) -> None:
     """Avvia il server TCP. Blocca finche' non viene cancellato."""
-    log.info("Modbus TCP server starting on %s:%d (unit_id=%d)",
+    log.info("Modbus TCP server starting on %s:%d (unit_id=%d, single=True)",
              host, port, emulator._settings.modbus_unit_id)
-    await StartAsyncTcpServer(context=emulator.context, address=(host, port))
+    server = ModbusTcpServer(
+        emulator.context,
+        address=(host, port),
+        request_tracer=_trace_request,
+    )
+    await server.serve_forever()
 
 
 async def run_openhab_poller(emulator: HuaweiModbusEmulator, oh: OpenHabClient, interval_s: float) -> None:

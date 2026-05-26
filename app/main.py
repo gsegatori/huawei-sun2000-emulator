@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse
 from app import registers as R
 from app.config import Settings, get_settings
 from app.openhab import OpenHabClient
-from app.server import HuaweiModbusEmulator, run_modbus_server, run_openhab_poller
+from app.server import RECENT_PDU, HuaweiModbusEmulator, run_modbus_server, run_openhab_poller
 
 log = logging.getLogger("huawei-emu")
 
@@ -87,6 +87,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/admin/config")
     async def admin_config():
         return settings.model_dump()
+
+    @app.get("/admin/recent-requests")
+    async def admin_recent_requests():
+        """Ring buffer delle ultime PDU Modbus ricevute (debug: capire cosa
+        legge un client esterno tipo Viaris / FusionSolar)."""
+        now = time.time()
+        # ordina cronologicamente decrescente, aggiunge eta'
+        items = list(RECENT_PDU)
+        out = []
+        for it in reversed(items):
+            out.append({**it, "age_s": round(now - it["ts"], 2)})
+        return {"count": len(out), "items": out}
 
     @app.get("/admin/registers")
     async def admin_registers():
