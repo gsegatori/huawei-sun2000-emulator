@@ -53,48 +53,34 @@ DEYE_ITEMS = [
 ]
 
 
-# ROUND 5 — VALIDAZIONE FINALE: scenario "pulito" senza scambio rete
-# (Grid=0) dove TUTTI i 5 valori display devono matchare perfettamente.
-#
-# Formula imbroglio definitiva:
-#   PV_mock     = PV_real
-#   AC_mock     = (PV_real + AC_inverter_real) / 2
-#   Grid_A_mock = Grid_real_signed   (+ import, - export)
-#
-# Predizioni Viaris display:
-#   Solar = PV_real
-#   Battery = 2×(PV_mock - AC_mock) = PV_real - AC_inverter_real (= battery_real)
-#   Home = 2×AC_mock - PV_mock - Grid_A_mock = AC_real - Grid_real_signed
-#   Rete = -Grid_A_mock = -Grid_real_signed
+# MOCK ITEMS: valori "fisici" (PRE-imbroglio). L'imbroglio AC=(PV+AC)/2
+# viene applicato dal poller in apply_values(), quindi qui mettiamo i
+# valori REALI come se fossero letti dal Deye.
 #
 # Scenario REALE (autoconsumo + surplus carica batteria):
 #   PV_real          = 4000 W (Solar atteso 4.0 kW)
 #   AC_inverter_real = 3500 W
 #   Battery_real     = PV - AC = +500 W (carica)
 #   Grid_real        = 0 W (no scambio rete)
-#   Load_real        = AC - Grid = 3500 W (casa consuma = output inverter)
+#   Load_real        = 3500 W
 #
-# Mock IMBROGLIATI:
-#   PV_mock     = 4000
-#   AC_mock     = (4000+3500)/2 = 3750
-#   Grid_A_mock = 0
-#
-# PREDIZIONI:
-#   Solar   = 4.0 kW
+# Il poller scrivera' a 32080 il valore imbrogliato = (4000+3500)/2 = 3750.
+# La Viaris calcolera':
+#   Solar   = 4.0 kW (legge 32064 = PV reale)
 #   Battery = 2×(4000-3750) = 500 -> 0.5 kW CHARGING
-#   Home    = 2×3750 - 4000 - 0 = 3500 -> 3.5 kW  (match con Load_real!)
+#   Home    = 2×3750 - 4000 - 0 = 3500 -> 3.5 kW  (= Load_real!)
 #   Rete    = 0 kW
-#   SoC     = 50% (per distinguere da Round 4 75%)
+#   SoC     = 50%
 MOCK_ITEMS: dict[str, float] = {
     # PV input DC: PV_real = 4000 W
     "DeyeModbusPv1Power": 2000.0,
     "DeyeModbusPv2Power": 2000.0,
     "DeyeModbusPvPower": 4000.0,
-    # Inverter AC output IMBROGLIATO a 3750 W (= (4000+3500)/2)
-    "DeyeModbusInverterAPower": 1250.0,
-    "DeyeModbusInverterBPower": 1250.0,
-    "DeyeModbusInverterCPower": 1250.0,
-    "DeyeModbusInverterTotal": 3750.0,
+    # Inverter AC output FISICO = 3500 W (il poller imbroglia automaticamente)
+    "DeyeModbusInverterAPower": 1170.0,
+    "DeyeModbusInverterBPower": 1170.0,
+    "DeyeModbusInverterCPower": 1160.0,
+    "DeyeModbusInverterTotal": 3500.0,
     "DeyeModbusInverterACurrent": 5.4,
     "DeyeModbusInverterBCurrent": 5.4,
     "DeyeModbusInverterCCurrent": 5.4,

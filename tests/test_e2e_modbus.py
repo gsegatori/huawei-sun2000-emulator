@@ -27,11 +27,12 @@ async def test_modbus_server_serves_huawei_registers():
     emulator = HuaweiModbusEmulator(settings)
     emulator.apply_values({
         "DeyeModbusInverterAVoltage": 235.0,
-        "DeyeModbusInverterTotal": 5432,
-        "DeyeModbusPvPower": 6000,
+        "DeyeModbusInverterTotal": 5432,  # AC_real
+        "DeyeModbusPvPower": 6000,        # PV
         "DeyeModbusProdDaily": 25.5,
         "DeyeModbusBatterySoc": 78,
     })
+    # Imbroglio Viaris: AC_mock a 32080 = (PV+AC_real)/2 = (6000+5432)/2 = 5716
 
     server_task = asyncio.create_task(
         run_modbus_server(emulator, "127.0.0.1", 15020)
@@ -59,10 +60,10 @@ async def test_modbus_server_serves_huawei_registers():
             assert not rr.isError()
             assert R.decode_u16(rr.registers) == 2350  # 235.0 * 10
 
-            # Active power
+            # Active power - imbroglio attivo: (PV+AC_real)/2 = (6000+5432)/2 = 5716
             rr = await client.read_holding_registers(R.ADDR_ACTIVE_POWER, count=2, slave=1)
             assert not rr.isError()
-            assert R.decode_i32(rr.registers) == 5432
+            assert R.decode_i32(rr.registers) == 5716
 
             # Daily yield
             rr = await client.read_holding_registers(R.ADDR_DAILY_YIELD, count=2, slave=1)

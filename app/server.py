@@ -174,14 +174,17 @@ class HuaweiModbusEmulator:
         b.setValues(R.ADDR_GRID_CURRENT_B, R.i32(int(ib * 1000)))
         b.setValues(R.ADDR_GRID_CURRENT_C, R.i32(int(ic * 1000)))
 
-        # Active power AC (output inverter, W)
-        active_total = g("DeyeModbusInverterTotal")
-        if active_total is None:
-            # fallback: somma per fase
+        # Active power AC (output inverter, W) — applica IMBROGLIO Viaris.
+        # active_total_real = quel che eroga davvero l'inverter (fisico).
+        # active_total = (PV + AC_real)/2: cosi' la Viaris calcola
+        # Battery_display = 2*(PV - AC_mock) = PV - AC_real = battery_real.
+        active_total_real = g("DeyeModbusInverterTotal")
+        if active_total_real is None:
             pa = g("DeyeModbusInverterAPower") or 0
             pb = g("DeyeModbusInverterBPower") or 0
             pc = g("DeyeModbusInverterCPower") or 0
-            active_total = pa + pb + pc
+            active_total_real = pa + pb + pc
+        active_total = ((pv_tot or 0) + (active_total_real or 0)) / 2  # imbroglio
         b.setValues(R.ADDR_ACTIVE_POWER, R.i32(int(active_total)))
 
         # Reactive power: nessun dato in OH -> 0
@@ -217,9 +220,10 @@ class HuaweiModbusEmulator:
             btemp = g("DeyeModbusBatteryTemp") or 25
             b.setValues(R.ADDR_BATTERY_SOC, R.u16(int(soc * 10)))
             b.setValues(R.ADDR_BATTERY_TEMPERATURE, R.i16(int(btemp * 10)))
-            # Bilancio AC inverter ibrido: P_batt = P_pv - P_inverter_out
+            # Bilancio AC inverter ibrido REALE (non imbrogliato):
+            # P_batt = P_pv - P_inverter_real_out
             # >0 = batteria carica, <0 = batteria scarica.
-            charge_p = int((pv_tot or 0) - (active_total or 0))
+            charge_p = int((pv_tot or 0) - (active_total_real or 0))
             # 37001 = I32 W signed (spec ufficiale Huawei).
             b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, R.i32(charge_p))
             # Running status: 0=offline,1=standby,2=running,3=fault,4=sleep.
@@ -271,7 +275,7 @@ class HuaweiModbusEmulator:
         self._last_translation = {
             "live": {
                 "pv_total_W": pv_tot,
-                "inverter_ac_total_W": active_total or 0,
+                "inverter_ac_total_W": active_total_real or 0,
                 "grid_total_W_signed": g("DeyeModbusGridTotal") or 0,
                 "load_total_W": g("DeyeModbusLoadTotal") or 0,
                 "battery_output_W_deye_signed": -(charge_p),  # convenzione Deye: +scarica/-carica
@@ -286,11 +290,12 @@ class HuaweiModbusEmulator:
             },
             "mock_huawei_regs": {
                 "32064_input_power_W": int(pv_tot or 0),
-                "32080_active_power_W": int(active_total or 0),
+                "32080_active_power_W_imbroglio": int(active_total or 0),
+                "32080_AC_real_W": int(active_total_real or 0),
                 "37001_battery_charge_W_signed": charge_p,
                 "37113_meter_active_W_signed": int(g("DeyeModbusGridTotal") or 0),
                 "37738_soc_pct_x10": int((g("DeyeModbusBatterySoc") or 0) * 10),
-                "_imbroglio_active": False,  # apply_values "raw" non imbroglia ancora
+                "_imbroglio_active": True,  # AC_mock = (PV+AC_real)/2 sempre attivo
             },
             "predicted_viaris": {
                 # Formule confermate nei round 1-5:

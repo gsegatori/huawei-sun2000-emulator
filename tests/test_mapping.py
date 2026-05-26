@@ -48,8 +48,9 @@ def test_apply_voltages_and_currents():
     assert R.decode_u16(e.read_register(R.ADDR_GRID_VOLTAGE_B, 1)) == int(242.1 * 10)
     # correnti in A*1000
     assert R.decode_i32(e.read_register(R.ADDR_GRID_CURRENT_A, 2)) == int(19.3 * 1000)
-    # active power totale
-    assert R.decode_i32(e.read_register(R.ADDR_ACTIVE_POWER, 2)) == 9996
+    # active power totale -- ora imbrogliato per Viaris: (PV + AC_real)/2
+    # PV=7042, AC_real=9996 -> imbroglio = (7042+9996)/2 = 8519
+    assert R.decode_i32(e.read_register(R.ADDR_ACTIVE_POWER, 2)) == 8519
     # PV input
     assert R.decode_i32(e.read_register(R.ADDR_INPUT_POWER, 2)) == 7042
     # temperatura interna °C*10
