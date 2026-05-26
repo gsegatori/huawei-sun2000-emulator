@@ -21,7 +21,7 @@ from pymodbus.server import ModbusTcpServer
 
 from app import registers as R
 from app.config import Settings
-from app.openhab import OpenHabClient
+from app.openhab import MOCK_ITEMS, OpenHabClient
 
 log = logging.getLogger(__name__)
 
@@ -326,5 +326,20 @@ async def run_openhab_poller(emulator: HuaweiModbusEmulator, oh: OpenHabClient, 
             raise
         except Exception as e:
             log.warning("OH poll failed: %s", e)
+            emulator.mark_update_failed(str(e))
+        await asyncio.sleep(interval_s)
+
+
+async def run_mock_poller(emulator: HuaweiModbusEmulator, interval_s: float) -> None:
+    """Loop background: ogni interval_s applica i valori MOCK_ITEMS fissi.
+    Usato quando settings.mock_mode = True per debug visivo dell'app client."""
+    log.warning("MOCK MODE: poller usa valori fissi (vedi app/openhab.py:MOCK_ITEMS)")
+    while True:
+        try:
+            emulator.apply_values(dict(MOCK_ITEMS))
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.warning("mock poll failed: %s", e)
             emulator.mark_update_failed(str(e))
         await asyncio.sleep(interval_s)

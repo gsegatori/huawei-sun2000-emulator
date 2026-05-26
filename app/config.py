@@ -49,6 +49,11 @@ class Settings(BaseSettings):
 
     poll_interval_s: float = 5.0
 
+    # Mock mode: bypassa OpenHAB e usa valori fissi (debug).
+    # I valori sono numeri "parlanti" (ogni grandezza una sequenza univoca)
+    # cosi' guardando l'app/UI client si capisce dove finisce ogni dato.
+    mock_mode: bool = False
+
     log_level: str = "INFO"
 
 

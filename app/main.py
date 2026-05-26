@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse
 from app import registers as R
 from app.config import Settings, get_settings
 from app.openhab import OpenHabClient
-from app.server import RECENT_PDU, HuaweiModbusEmulator, run_modbus_server, run_openhab_poller
+from app.server import RECENT_PDU, HuaweiModbusEmulator, run_mock_poller, run_modbus_server, run_openhab_poller
 
 log = logging.getLogger("huawei-emu")
 
@@ -44,13 +44,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def _lifespan(_app: FastAPI):
-        log.info("starting Modbus server + OH poller in background")
+        log.info("starting Modbus server + %s poller in background",
+                 "MOCK" if settings.mock_mode else "OH")
         modbus_task = asyncio.create_task(
             run_modbus_server(emulator, settings.modbus_host, settings.modbus_port)
         )
-        poller_task = asyncio.create_task(
-            run_openhab_poller(emulator, oh, settings.poll_interval_s)
-        )
+        if settings.mock_mode:
+            poller_task = asyncio.create_task(
+                run_mock_poller(emulator, settings.poll_interval_s)
+            )
+        else:
+            poller_task = asyncio.create_task(
+                run_openhab_poller(emulator, oh, settings.poll_interval_s)
+            )
         try:
             yield
         finally:
