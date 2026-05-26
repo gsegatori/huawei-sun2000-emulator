@@ -166,13 +166,11 @@ class HuaweiModbusEmulator:
         b.setValues(R.ADDR_GRID_VOLTAGE_BC, R.u16(int(((vb + vc) / 2) * 10 * 1.732)))
         b.setValues(R.ADDR_GRID_VOLTAGE_CA, R.u16(int(((vc + va) / 2) * 10 * 1.732)))
 
-        # Grid current (A * 1000)
+        # Salviamo le correnti reali Deye per il cruscotto (le scriviamo
+        # imbrogliate piu' avanti per pilotare la formula Viaris).
         ia = g("DeyeModbusInverterACurrent") or 0
         ib = g("DeyeModbusInverterBCurrent") or 0
         ic = g("DeyeModbusInverterCCurrent") or 0
-        b.setValues(R.ADDR_GRID_CURRENT_A, R.i32(int(ia * 1000)))
-        b.setValues(R.ADDR_GRID_CURRENT_B, R.i32(int(ib * 1000)))
-        b.setValues(R.ADDR_GRID_CURRENT_C, R.i32(int(ic * 1000)))
 
         # Active power AC (output inverter, W) — applica IMBROGLIO Viaris.
         # active_total_real = quel che eroga davvero l'inverter (fisico).
@@ -186,6 +184,20 @@ class HuaweiModbusEmulator:
             active_total_real = pa + pb + pc
         active_total = ((pv_tot or 0) + (active_total_real or 0)) / 2  # imbroglio
         b.setValues(R.ADDR_ACTIVE_POWER, R.i32(int(active_total)))
+
+        # IMBROGLIO correnti inverter (32072/74/76): distribuisco AC_mock
+        # equamente sulle 3 fasi cosi' che sum(V_phase * I_phase) = AC_mock.
+        # La Viaris a volte ricava AC_view = sum(V*I) invece di leggere
+        # direttamente 32080 -> senza questo imbroglio Battery e Home
+        # appaiono raddoppiati (= 2*AC_real invece di AC_mock).
+        ac_mock_per_phase = active_total / 3.0
+        for addr, v_phase in (
+            (R.ADDR_GRID_CURRENT_A, va or 230),
+            (R.ADDR_GRID_CURRENT_B, vb or 230),
+            (R.ADDR_GRID_CURRENT_C, vc or 230),
+        ):
+            i_phase_centiA = int((ac_mock_per_phase / v_phase) * 1000) if v_phase > 0 else 0
+            b.setValues(addr, R.i32(i_phase_centiA))
 
         # Reactive power: nessun dato in OH -> 0
         b.setValues(R.ADDR_REACTIVE_POWER, R.i32(0))

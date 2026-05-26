@@ -46,8 +46,10 @@ def test_apply_voltages_and_currents():
     # tensioni in V*10
     assert R.decode_u16(e.read_register(R.ADDR_GRID_VOLTAGE_A, 1)) == int(238.7 * 10)
     assert R.decode_u16(e.read_register(R.ADDR_GRID_VOLTAGE_B, 1)) == int(242.1 * 10)
-    # correnti in A*1000
-    assert R.decode_i32(e.read_register(R.ADDR_GRID_CURRENT_A, 2)) == int(19.3 * 1000)
+    # correnti inverter A/B/C IMBROGLIATE: I_phase = AC_mock/3/V_phase * 1000
+    # AC_mock = (PV+AC_real)/2 = (7042+9996)/2 = 8519, V_A=238.7, V_B=242.1
+    # I_A = 8519/3/238.7 * 1000 = 11896
+    assert R.decode_i32(e.read_register(R.ADDR_GRID_CURRENT_A, 2)) == 11896
     # active power totale -- ora imbrogliato per Viaris: (PV + AC_real)/2
     # PV=7042, AC_real=9996 -> imbroglio = (7042+9996)/2 = 8519
     assert R.decode_i32(e.read_register(R.ADDR_ACTIVE_POWER, 2)) == 8519
