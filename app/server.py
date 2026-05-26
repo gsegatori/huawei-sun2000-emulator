@@ -247,31 +247,41 @@ class HuaweiModbusEmulator:
         b.setValues(R.ADDR_METER_VOLTAGE_A, R.i32(int(va * 10)))
         b.setValues(R.ADDR_METER_VOLTAGE_B, R.i32(int(vb * 10)))
         b.setValues(R.ADDR_METER_VOLTAGE_C, R.i32(int(vc * 10)))
-        # Correnti per fase (I32 A * 100) — segno deriva dalla potenza per fase
-        # (positiva = import dalla rete, negativa = export verso la rete).
-        gia = g("DeyeModbusGridACurrent") or 0
-        gib = g("DeyeModbusGridBCurrent") or 0
-        gic = g("DeyeModbusGridCCurrent") or 0
+        # Active power totale a 37113 (I32, W, +import / -export).
         pga = g("DeyeModbusGridAPower") or 0
         pgb = g("DeyeModbusGridBPower") or 0
         pgc = g("DeyeModbusGridCPower") or 0
-        sign_a = -1 if pga < 0 else 1
-        sign_b = -1 if pgb < 0 else 1
-        sign_c = -1 if pgc < 0 else 1
-        b.setValues(R.ADDR_METER_CURRENT_A, R.i32(int(gia * sign_a * 100)))
-        b.setValues(R.ADDR_METER_CURRENT_B, R.i32(int(gib * sign_b * 100)))
-        b.setValues(R.ADDR_METER_CURRENT_C, R.i32(int(gic * sign_c * 100)))
-        # Active power totale a 37113 (I32, W, +import / -export).
         grid_total = g("DeyeModbusGridTotal")
         if grid_total is None:
             grid_total = pga + pgb + pgc
         b.setValues(R.ADDR_METER_ACTIVE_POWER, R.i32(int(grid_total)))
+
+        # ────────── IMBROGLIO Rete = Grid_total (non Grid_A_phase) ──────────
+        # La Viaris calcola "Rete" come V_A * I_A_phase del meter.
+        # Su sistema trifase squilibrato, la fase A puo' esportare anche
+        # quando il totale e' import (e viceversa) -> display fuorviante.
+        # Imbroglio: scriviamo I_A_signed in modo che V_A * I_A = Grid_total.
+        # Cosi' la Viaris mostra Rete = -Grid_total (con segno corretto).
+        # Conseguenza positiva: anche "Battery" della Viaris si avvicina al
+        # battery_real grazie al bilancio interno (Solar-Home+Rete=-Battery).
+        v_a_imbr = va if va > 0 else 230
+        i_a_imbroglio_centiA = int((grid_total / v_a_imbr) * 100)
+        b.setValues(R.ADDR_METER_CURRENT_A, R.i32(i_a_imbroglio_centiA))
+        # Fasi B/C: raw (con segno derivato da power signed)
+        gib = g("DeyeModbusGridBCurrent") or 0
+        gic = g("DeyeModbusGridCCurrent") or 0
+        sign_b = -1 if pgb < 0 else 1
+        sign_c = -1 if pgc < 0 else 1
+        b.setValues(R.ADDR_METER_CURRENT_B, R.i32(int(gib * sign_b * 100)))
+        b.setValues(R.ADDR_METER_CURRENT_C, R.i32(int(gic * sign_c * 100)))
+        gia = g("DeyeModbusGridACurrent") or 0  # solo per live view
         b.setValues(R.ADDR_METER_REACTIVE_POWER, R.i32(0))  # no dato OH
         b.setValues(R.ADDR_METER_POWER_FACTOR, R.i16(1000))
         b.setValues(R.ADDR_METER_FREQUENCY, R.i16(5000))
 
         # Calcola la view del cruscotto: Live Deye → Mock Huawei → Predicted Viaris
-        grid_a_phase = pga  # mio Grid_A_phase (signed: +import, -export)
+        # Grid_A_phase ora e' IMBROGLIATO a Grid_total (=> Rete=-Grid_total).
+        grid_a_phase = grid_total  # imbroglio attivo: Viaris vede Grid_total per fase A
         self._last_translation = {
             "live": {
                 "pv_total_W": pv_tot,
