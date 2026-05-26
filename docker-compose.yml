@@ -1,0 +1,15 @@
+services:
+  huawei-emulator:
+    build: .
+    image: huawei-sun2000-emulator:latest
+    container_name: huawei-sun2000-emulator
+    restart: unless-stopped
+    # Network host: cosi' la porta 502 e' direttamente visibile sull'host
+    # senza NAT - necessario per i client Modbus su LAN (Solarman, Home Assistant...).
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      - TZ=Europe/Rome
+    cap_add:
+      - NET_BIND_SERVICE

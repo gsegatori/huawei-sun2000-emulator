@@ -1,0 +1,35 @@
+[project]
+name = "huawei-sun2000-emulator"
+version = "0.1.0"
+description = "Emula un inverter Huawei SUN2000-10KTL-M1 via Modbus TCP esponendo i dati dell'inverter Deye letto da OpenHAB"
+requires-python = ">=3.12"
+dependencies = [
+    "pymodbus>=3.6,<3.8",  # 3.8+ ha riscritto datastore (sparse senza setValues), classic API persa
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+]
+
+[project.scripts]
+huawei-emulator = "app.main:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v --tb=short"
