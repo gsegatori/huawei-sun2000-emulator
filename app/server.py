@@ -182,14 +182,9 @@ class HuaweiModbusEmulator:
             pb = g("DeyeModbusInverterBPower") or 0
             pc = g("DeyeModbusInverterCPower") or 0
             active_total_real = pa + pb + pc
-        # IMBROGLIO Viaris: la formula display cambia tra GIORNO e NOTTE.
-        # Giorno (PV>50): Viaris fa Battery=2*(PV-AC_mock), Home=2*AC_mock-PV-Grid.
-        # Notte (PV<50): Viaris RADDOPPIA internamente, come se AC_view=2*AC_mock.
-        # Quindi di notte dimezziamo ulteriormente per compensare.
-        if (pv_tot or 0) > 50:
-            active_total = ((pv_tot or 0) + (active_total_real or 0)) / 2  # giorno
-        else:
-            active_total = (active_total_real or 0) / 4  # notte: compensazione raddoppio
+        # IMBROGLIO AC_mock standard (giorno funziona perfettamente,
+        # notte la Viaris cambia formula e ignora questo valore).
+        active_total = ((pv_tot or 0) + (active_total_real or 0)) / 2
         b.setValues(R.ADDR_ACTIVE_POWER, R.i32(int(active_total)))
 
         # IMBROGLIO correnti inverter (32072/74/76): distribuisco AC_mock
@@ -248,6 +243,8 @@ class HuaweiModbusEmulator:
             # >0 = batteria carica, <0 = batteria scarica.
             charge_p = int((pv_tot or 0) - (active_total_real or 0))
             # 37001 = I32 W signed (spec ufficiale Huawei).
+            # NB: la Viaris di notte (PV=0) sembra usare formula diversa
+            # da quella scoperta in Round 1-5. Da indagare con round mock notte.
             b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, R.i32(charge_p))
             # Running status: 0=offline,1=standby,2=running,3=fault,4=sleep.
             # Per battery in scarica/carica usiamo "running" (2); standby per ~0.
