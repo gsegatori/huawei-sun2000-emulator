@@ -53,48 +53,46 @@ DEYE_ITEMS = [
 ]
 
 
-# Valori MOCK fisicamente COERENTI (bilancio energia rispettato) e con
-# numeri DISTINTI per ogni grandezza, cosi' guardando l'app/UI client si
-# capisce a colpo d'occhio dove ciascun registro finisce.
+# ROUND 1 — test diagnostico: isolare la fonte del campo "Battery" Viaris.
 #
-# Scenario simulato:
-#   PV produce 9000 W -> 6000 W vanno all'inverter (verso casa+rete),
-#                        3000 W caricano la batteria
-#   Inverter eroga 6000 W AC -> 4000 W consumati da casa, 2000 W esportati
-#   Grid Total = -2000 W (negativo = export verso rete)
+# Hp da verificare: "Battery" della Viaris segue 32080 (Active Power AC)?
 #
-# Bilancio: PV 9000 = AC_out 6000 + Battery_charge 3000  ✓
-#           AC_out 6000 = Load 4000 + Grid_export 2000  ✓
+# Scenario simulato (cambia SOLO active_power rispetto al round precedente,
+# tutto il resto resta uguale per non confondere):
+#   PV produce 9000 W
+#   Inverter AC out = 4321 W (NUOVO, era 6000)  <-- valore-spia univoco
+#   Battery_charge = PV - AC = 9000 - 4321 = 4679 W (verra' scritto a 37001)
+#   Load = 2321 W  (= AC - Grid_export = 4321 - 2000)
+#   Grid_total = -2000 W (export, invariato)
 #
-# Numeri attesi nella Viaris (kW): Solar=9, Inst.power=6, Battery=3 charging,
-# Rete=-2 export, Casa=4. Tutti distinti = mapping inequivocabile.
+# Bilancio: 9000 = 4321 + 4679 ✓ ; 4321 = 2321 + 2000 ✓
+#
+# PREDIZIONI Viaris display:
+#   Solar          = 9.0 kW (legge 32064 -> invariato)
+#   Battery        =
+#       SE 4.32 kW -> conferma 32080 (Active Power) come fonte (bug Viaris)
+#       SE 4.68 kW -> conferma 37001 (battery_charge_discharge_power)
+#       SE 6.0 kW  -> qualche cache, niente cambio
+#       SE altro   -> da indagare
+#   Casa           = 2.32 kW (se derivato bilancio), ~ Load 2.32
+#   Rete           = -2.0 kW (Grid invariato)
 MOCK_ITEMS: dict[str, float] = {
-    # PV input DC (32064) -> 9000 W = "Solar" atteso 9.0 kW
+    # PV input DC invariato
     "DeyeModbusPv1Power": 4500.0,
     "DeyeModbusPv2Power": 4500.0,
     "DeyeModbusPvPower": 9000.0,
-    # Inverter AC output (32080) -> 6000 W = "Inst. power" atteso 6.0 kW
-    # Per-fase DISTINTI (somma 6000) per identificare le fasi R/S/T:
-    #   Fase A/R = 2100 W
-    #   Fase B/S = 1900 W
-    #   Fase C/T = 2000 W
-    "DeyeModbusInverterAPower": 2100.0,
-    "DeyeModbusInverterBPower": 1900.0,
-    "DeyeModbusInverterCPower": 2000.0,
-    "DeyeModbusInverterTotal": 6000.0,
-    # Correnti inverter univocamente identificabili per fase
-    "DeyeModbusInverterACurrent": 9.0,
-    "DeyeModbusInverterBCurrent": 8.7,
-    "DeyeModbusInverterCCurrent": 8.3,
-    # Voltages distinti per fase
+    # Inverter AC output - VALORE SPIA Round 1: 4321 W
+    "DeyeModbusInverterAPower": 1421.0,  # somma totale = 4321
+    "DeyeModbusInverterBPower": 1450.0,
+    "DeyeModbusInverterCPower": 1450.0,
+    "DeyeModbusInverterTotal": 4321.0,   # <-- valore-spia
+    "DeyeModbusInverterACurrent": 6.5,
+    "DeyeModbusInverterBCurrent": 6.3,
+    "DeyeModbusInverterCCurrent": 6.0,
     "DeyeModbusInverterAVoltage": 220.0,
     "DeyeModbusInverterBVoltage": 230.0,
     "DeyeModbusInverterCVoltage": 240.0,
-    # Grid meter (37113) -> -2000 W = "Rete" atteso -2.0 kW (export)
-    # Per-fase DISTINTI (somma -2000):
-    #   Fase A/R = -700 W
-    #   Fase B/S = -600 W
-    #   Fase C/T = -700 W
+    # Grid meter invariato a -2000 W (export)
     "DeyeModbusGridTotal": -2000.0,
     "DeyeModbusGridAPower": -700.0,
     "DeyeModbusGridBPower": -600.0,
@@ -102,14 +100,13 @@ MOCK_ITEMS: dict[str, float] = {
     "DeyeModbusGridACurrent": 3.0,
     "DeyeModbusGridBCurrent": 2.9,
     "DeyeModbusGridCCurrent": 2.8,
-    # Load house -> 4000 W = "Casa" atteso 4.0 kW
-    "DeyeModbusLoadTotal": 4000.0,
-    # Battery: SoC 75% (univoco) e charge_p derivato = PV - Inverter = 3000 W (carica)
+    # Load house: 2321 W (= 4321 - 2000)
+    "DeyeModbusLoadTotal": 2321.0,
+    # Battery: SoC 75% invariato, charge_p derivato in apply_values = 9000 - 4321 = 4679
     "DeyeModbusBatterySoc": 75.0,
     "DeyeModbusBatteryTemp": 28.0,
     "DeyeModbusAcTemp": 35.0,
     "DeyeModbusDcTemp": 45.0,
-    # Energy distintivi: 56.78 kWh daily, 4.321 MWh total
     "DeyeModbusProdDaily": 56.78,
     "DeyeModbusProdTotal": 4.321,
 }
