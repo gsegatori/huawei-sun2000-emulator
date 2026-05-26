@@ -366,12 +366,13 @@ async function refresh() {
 
     const m = t.mock_huawei_regs || {};
     fill('t-mock', [
-      ['32064 input power DC', m['32064_input_power_W'], 'W'],
-      ['32080 active power AC', m['32080_active_power_W'], 'W'],
+      ['32064 input power DC (PV)', m['32064_input_power_W'], 'W'],
+      ['32080 active power AC (Viaris legge questo)', m['32080_active_power_W_imbroglio'], 'W'],
+      ['  └ AC_real Deye (pre-imbroglio)', m['32080_AC_real_W'], 'W'],
       ['37001 battery charge (signed)', m['37001_battery_charge_W_signed'], 'W', true],
       ['37113 meter active (signed)', m['37113_meter_active_W_signed'], 'W', true],
       ['37738 SoC (×10)', m['37738_soc_pct_x10'], ''],
-      ['Imbroglio attivo?', m._imbroglio_active ? 'SI' : 'no'],
+      ['Imbroglio attivo?', m._imbroglio_active ? 'SI ✓' : 'no'],
     ]);
 
     const v = t.predicted_viaris || {};
