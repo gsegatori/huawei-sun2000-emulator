@@ -85,14 +85,17 @@ def test_battery_power_i32_signed():
     - scarica. 37750 e' bus voltage U16 V*10 (NON power). 37000/37741
     running status = 1 standby quando |charge_p|<=50W, 2 running altrimenti."""
     e = _make()
-    # Caso 1: PV avanza, batteria carica (+6000 W)
+    # Caso 1: PV avanza, batteria carica (+6000 W).
+    # 37001 e' CLAMPED a |AC_mock| (=(PV+AC_real)/2 = (8000+2000)/2 = 5000).
+    # battery_real = +6000, clamped a +5000.
     e.apply_values({"DeyeModbusPvPower": 8000, "DeyeModbusInverterTotal": 2000})
-    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 6000
-    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == 6000
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 5000
+    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == 6000  # storage Unit1 NON clamped
     assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 2
-    # Caso 2: inverter eroga > PV, batteria scarica (-5316 W)
+    # Caso 2: inverter eroga > PV, batteria scarica (-5316 W).
+    # AC_mock = (545+5861)/2 = 3203. Clamp a -3203.
     e.apply_values({"DeyeModbusPvPower": 545, "DeyeModbusInverterTotal": 5861})
-    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -5316
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -3203
     assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == -5316
     # Caso 3: standby
     e.apply_values({"DeyeModbusPvPower": 1000, "DeyeModbusInverterTotal": 1010})
