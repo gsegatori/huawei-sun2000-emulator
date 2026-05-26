@@ -53,70 +53,71 @@ DEYE_ITEMS = [
 ]
 
 
-# ROUND 4 — TEST IMBROGLIO: target battery scarica 0.9 kW.
+# ROUND 5 — VALIDAZIONE FINALE: scenario "pulito" senza scambio rete
+# (Grid=0) dove TUTTI i 5 valori display devono matchare perfettamente.
 #
-# FORMULE VIARIS confermate nei round 1-3:
-#   Solar_display = PV_mock (32064)
-#   Battery_display = 2 × (PV_mock - AC_mock)
-#   Home_display = 2×AC_mock - PV_mock + |Grid_A_phase_mock|
-#   Rete_display = |Grid_A_phase_mock|
-#   SoC_display = 37738
+# Formula imbroglio definitiva:
+#   PV_mock     = PV_real
+#   AC_mock     = (PV_real + AC_inverter_real) / 2
+#   Grid_A_mock = Grid_real_signed   (+ import, - export)
 #
-# Per far apparire BATTERY CORRETTA, "imbroghiamo" AC_mock:
-#   AC_mock = (PV_real + AC_inverter_real) / 2
-# Cosi' la formula 2×(PV-AC) restituisce battery_real.
+# Predizioni Viaris display:
+#   Solar = PV_real
+#   Battery = 2×(PV_mock - AC_mock) = PV_real - AC_inverter_real (= battery_real)
+#   Home = 2×AC_mock - PV_mock - Grid_A_mock = AC_real - Grid_real_signed
+#   Rete = -Grid_A_mock = -Grid_real_signed
 #
-# Scenario simulato (REALI):
-#   PV_real            = 1200 W (Solar atteso 1.2 kW)
-#   AC_inverter_real   = 2100 W
-#   Battery_real       = PV-AC = -900 W (scarica)
-#   Grid_real          = +600 W (import)
-#   Load_real          = 2700 W (casa consuma)
+# Scenario REALE (autoconsumo + surplus carica batteria):
+#   PV_real          = 4000 W (Solar atteso 4.0 kW)
+#   AC_inverter_real = 3500 W
+#   Battery_real     = PV - AC = +500 W (carica)
+#   Grid_real        = 0 W (no scambio rete)
+#   Load_real        = AC - Grid = 3500 W (casa consuma = output inverter)
 #
 # Mock IMBROGLIATI:
-#   PV_mock     = 1200 (= PV_real)
-#   AC_mock     = (1200+2100)/2 = 1650
-#   Grid_A_mock = 600 (= |Grid_real|, solo fase A)
+#   PV_mock     = 4000
+#   AC_mock     = (4000+3500)/2 = 3750
+#   Grid_A_mock = 0
 #
-# PREDIZIONI Viaris display:
-#   Solar      = 1.2 kW
-#   Battery    = 2×(1200-1650) = -900 -> 0.9 kW DISCHARGING
-#   Home       = 2×1650 - 1200 + 600 = 2700 -> 2.7 kW
-#   Rete       = 0.6 kW
-#   SoC        = 75%
+# PREDIZIONI:
+#   Solar   = 4.0 kW
+#   Battery = 2×(4000-3750) = 500 -> 0.5 kW CHARGING
+#   Home    = 2×3750 - 4000 - 0 = 3500 -> 3.5 kW  (match con Load_real!)
+#   Rete    = 0 kW
+#   SoC     = 50% (per distinguere da Round 4 75%)
 MOCK_ITEMS: dict[str, float] = {
-    # PV input DC: PV_real = 1200 W
-    "DeyeModbusPv1Power": 600.0,
-    "DeyeModbusPv2Power": 600.0,
-    "DeyeModbusPvPower": 1200.0,
-    # Inverter AC output IMBROGLIATO a 1650 W (= (PV_real+AC_real)/2)
-    "DeyeModbusInverterAPower": 550.0,
-    "DeyeModbusInverterBPower": 550.0,
-    "DeyeModbusInverterCPower": 550.0,
-    "DeyeModbusInverterTotal": 1650.0,
-    "DeyeModbusInverterACurrent": 2.5,
-    "DeyeModbusInverterBCurrent": 2.4,
-    "DeyeModbusInverterCCurrent": 2.3,
-    "DeyeModbusInverterAVoltage": 220.0,
+    # PV input DC: PV_real = 4000 W
+    "DeyeModbusPv1Power": 2000.0,
+    "DeyeModbusPv2Power": 2000.0,
+    "DeyeModbusPvPower": 4000.0,
+    # Inverter AC output IMBROGLIATO a 3750 W (= (4000+3500)/2)
+    "DeyeModbusInverterAPower": 1250.0,
+    "DeyeModbusInverterBPower": 1250.0,
+    "DeyeModbusInverterCPower": 1250.0,
+    "DeyeModbusInverterTotal": 3750.0,
+    "DeyeModbusInverterACurrent": 5.4,
+    "DeyeModbusInverterBCurrent": 5.4,
+    "DeyeModbusInverterCCurrent": 5.4,
+    "DeyeModbusInverterAVoltage": 230.0,
     "DeyeModbusInverterBVoltage": 230.0,
-    "DeyeModbusInverterCVoltage": 240.0,
-    # Grid meter: import +600 W solo fase A
-    "DeyeModbusGridTotal": 600.0,
-    "DeyeModbusGridAPower": 600.0,
+    "DeyeModbusInverterCVoltage": 230.0,
+    # Grid meter: nessuno scambio
+    "DeyeModbusGridTotal": 0.0,
+    "DeyeModbusGridAPower": 0.0,
     "DeyeModbusGridBPower": 0.0,
     "DeyeModbusGridCPower": 0.0,
-    "DeyeModbusGridACurrent": 2.7,
+    "DeyeModbusGridACurrent": 0.0,
     "DeyeModbusGridBCurrent": 0.0,
     "DeyeModbusGridCCurrent": 0.0,
-    # Load 2700 W (= casa)
-    "DeyeModbusLoadTotal": 2700.0,
-    # SoC: 75% (invariato), Battery temp/Inverter temp invariati
-    "DeyeModbusBatterySoc": 75.0,
+    # Load = 3500 W (= output inverter reale, no scambio rete)
+    "DeyeModbusLoadTotal": 3500.0,
+    # SoC: 50% (distinto dai round precedenti)
+    "DeyeModbusBatterySoc": 50.0,
     "DeyeModbusBatteryTemp": 28.0,
     "DeyeModbusAcTemp": 35.0,
     "DeyeModbusDcTemp": 45.0,
-    "DeyeModbusProdDaily": 56.78,
-    "DeyeModbusProdTotal": 4.321,
+    "DeyeModbusProdDaily": 12.34,
+    "DeyeModbusProdTotal": 1.234,
 }
 
 
