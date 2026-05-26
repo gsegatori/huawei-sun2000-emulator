@@ -200,3 +200,11 @@ ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER = 37750  # I32 (W)
 ADDR_STORAGE_UNIT_1_TEMPERATURE = 37752      # I16 (°C * 10)
 ADDR_STORAGE_UNIT_1_TOTAL_CHARGE = 37753     # U32 (kWh * 100)
 ADDR_STORAGE_UNIT_1_TOTAL_DISCHARGE = 37755  # U32 (kWh * 100)
+ADDR_STORAGE_UNIT_1_SOH = 37743              # U16 (% * 10) - state of health
+
+# Control registers (47xxx): valori settabili dal client (Viaris, FusionSolar)
+# per controllare Active Power Limit, Storage Working Mode, ecc.
+ADDR_ACTIVE_POWER_CONTROL_MODE = 47075       # U16 (0=unlimited)
+ADDR_ACTIVE_POWER_FIXED_VALUE = 47076        # U32 (W, default = rated power)
+ADDR_ACTIVE_POWER_PERCENTAGE_DERATING = 47078  # I16 (% * 10, 1000 = 100%)
+ADDR_STORAGE_WORKING_MODE = 47086            # U16 (0=adaptive)
