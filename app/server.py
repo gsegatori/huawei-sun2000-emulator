@@ -218,11 +218,24 @@ class HuaweiModbusEmulator:
             b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, R.i32(charge_p))
             # Storage Unit 1 (LUNA2000) layout 37738+ - letti dalla Viaris.
             b.setValues(R.ADDR_STORAGE_UNIT_1_SOC, R.u16(int(soc * 10)))
-            b.setValues(R.ADDR_STORAGE_UNIT_1_RUNNING_STATUS, R.u16(2))  # running
             b.setValues(R.ADDR_STORAGE_UNIT_1_BUS_VOLTAGE, R.u16(7200))  # 720.0 V nominale
             b.setValues(R.ADDR_STORAGE_UNIT_1_BUS_CURRENT, R.i16(int((charge_p / 720) * 10)))
-            b.setValues(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, R.i32(charge_p))
             b.setValues(R.ADDR_STORAGE_UNIT_1_TEMPERATURE, R.i16(int(btemp * 10)))
+            # Battery power magnitudo (U16 a singolo reg, NOT I32).
+            # La Viaris fa "read addr=37750 count=1" e interpreta come
+            # unsigned U16 -> con I32 signed negativo (high-word 0xFFFF)
+            # leggeva 65535 e mostrava "Charging 65.535 kW" sballato.
+            # Scriviamo magnitude e segnaliamo la direzione via running_status.
+            mag = min(abs(charge_p), 65535)
+            b.setValues(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, R.u16(mag))
+            # Running status: 1=standby, 2=charging, 3=discharging (codici Huawei)
+            if charge_p > 50:
+                bat_status = 2
+            elif charge_p < -50:
+                bat_status = 3
+            else:
+                bat_status = 1
+            b.setValues(R.ADDR_STORAGE_UNIT_1_RUNNING_STATUS, R.u16(bat_status))
 
         # Smart meter DTSU666 (37100+) - layout TRIFASE corretto.
         # Tensioni phase-N
