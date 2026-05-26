@@ -110,17 +110,16 @@ class HuaweiModbusEmulator:
         self._block.setValues(R.ADDR_METER_POWER_FACTOR, R.i16(1000))
         if s.huawei_has_battery:
             self._block.setValues(R.ADDR_BATTERY_RUNNING_STATUS, R.u16(2))  # running
-            self._block.setValues(R.ADDR_STORAGE_UNIT_1_SOH, R.u16(1000))    # 100.0% SoH
         else:
             self._block.setValues(R.ADDR_BATTERY_RUNNING_STATUS, R.u16(0))  # offline
-        # Control registers (47075-47086) pre-impostati a 0/no-limit. La
-        # Viaris all'handshake scrive comunque [0, 0] su 47077-47078 per
-        # disattivare ogni limit. Pre-mettendolo a 0 evitiamo la write
-        # ridondante e qualunque side-effect su altri client.
-        self._block.setValues(R.ADDR_ACTIVE_POWER_CONTROL_MODE, R.u16(0))   # 0 = no limit
-        self._block.setValues(R.ADDR_ACTIVE_POWER_FIXED_VALUE, R.u32(0))     # 0 = unlimited
-        self._block.setValues(R.ADDR_ACTIVE_POWER_PERCENTAGE_DERATING, R.i16(0))
-        self._block.setValues(R.ADDR_STORAGE_WORKING_MODE, R.u16(0))         # 0 = adaptive
+        # Control registers (47075-47086): defaults sensati. La Viaris
+        # all'handshake scrive 47077 = [0, 0] (Max discharging power = 0
+        # = no limit). Pre-popolando con 0 evitiamo la write ridondante.
+        self._block.setValues(R.ADDR_MAX_CHARGING_POWER, R.u32(0))    # 0 = no limit
+        self._block.setValues(R.ADDR_MAX_DISCHARGING_POWER, R.u32(0)) # 0 = no limit
+        self._block.setValues(R.ADDR_CHARGING_CUTOFF_SOC, R.u16(1000))  # 100.0% (no limit superior)
+        self._block.setValues(R.ADDR_DISCHARGE_CUTOFF_SOC, R.u16(100))  # 10.0% min
+        self._block.setValues(R.ADDR_STORAGE_WORKING_MODE, R.u16(2))    # Max self-consumption
 
     def apply_values(self, items: dict[str, float | None]) -> None:
         """Aggiorna i registri runtime dai valori OH (gia' parsed)."""
@@ -203,64 +202,41 @@ class HuaweiModbusEmulator:
             kwh = prod_total_mwh * 1000
         b.setValues(R.ADDR_ACCUMULATED_YIELD, R.u32(int(kwh * 100)))
 
-        # Battery aggregata (37000+)
+        # Battery aggregata (37000+) - layout HUAWEI ufficiale
         charge_p = 0
         if self._settings.huawei_has_battery:
             soc = g("DeyeModbusBatterySoc") or 0
             btemp = g("DeyeModbusBatteryTemp") or 25
             b.setValues(R.ADDR_BATTERY_SOC, R.u16(int(soc * 10)))
             b.setValues(R.ADDR_BATTERY_TEMPERATURE, R.i16(int(btemp * 10)))
-            # Bilancio AC inverter ibrido: P_pv = P_inverter_out + P_batt_charge
-            # quindi P_batt = P_pv - P_inverter_out (se PV avanza si carica,
-            # se l'inverter eroga piu' del PV la batteria si scarica).
+            # Bilancio AC inverter ibrido: P_batt = P_pv - P_inverter_out
+            # >0 = batteria carica, <0 = batteria scarica.
             charge_p = int((pv_tot or 0) - (active_total or 0))
-            # Viaris legge 37001 come U16 single reg (anche se spec dice I32):
-            # scrivendo I32 signed negativo, lei vede 0xFFFF=65535. Soluzione:
-            # magnitude in U16 + direzione via running_status 37000.
-            mag_aggr = min(abs(charge_p), 65535)
-            b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, R.u16(mag_aggr))
-            b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER + 1, R.u16(0))  # azzera low word
-            # Running status: 1=standby, 2=charging, 3=discharging
-            if charge_p > 50:
-                bat_status = 2
-            elif charge_p < -50:
-                bat_status = 3
-            else:
-                bat_status = 1
+            # 37001 = I32 W signed (spec ufficiale Huawei).
+            b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, R.i32(charge_p))
+            # Running status: 0=offline,1=standby,2=running,3=fault,4=sleep.
+            # Per battery in scarica/carica usiamo "running" (2); standby per ~0.
+            bat_status = 2 if abs(charge_p) > 50 else 1
             b.setValues(R.ADDR_BATTERY_RUNNING_STATUS, R.u16(bat_status))
-            # Storage Unit 1 (LUNA2000) layout 37738+ - letti dalla Viaris.
+
+            # Storage Unit 1 (LUNA2000) layout 37738+ - layout HUAWEI ufficiale.
             b.setValues(R.ADDR_STORAGE_UNIT_1_SOC, R.u16(int(soc * 10)))
-            b.setValues(R.ADDR_STORAGE_UNIT_1_BUS_VOLTAGE, R.u16(7200))  # 720.0 V nominale
+            b.setValues(R.ADDR_STORAGE_UNIT_1_RUNNING_STATUS, R.u16(bat_status))
+            b.setValues(R.ADDR_STORAGE_UNIT_1_BUS_VOLTAGE, R.u16(7200))   # 720.0 V nominale LUNA2000
+            b.setValues(R.ADDR_STORAGE_UNIT_1_BUS_VOLTAGE_ALT, R.u16(7200))  # 37750 -> bus voltage, NON power!
             b.setValues(R.ADDR_STORAGE_UNIT_1_BUS_CURRENT, R.i16(int((charge_p / 720) * 10)))
             b.setValues(R.ADDR_STORAGE_UNIT_1_TEMPERATURE, R.i16(int(btemp * 10)))
-            # Battery power magnitudo (U16 a singolo reg, NOT I32).
-            # La Viaris fa "read addr=37750 count=1" e interpreta come
-            # unsigned U16 -> con I32 signed negativo (high-word 0xFFFF)
-            # leggeva 65535 e mostrava "Charging 65.535 kW" sballato.
-            # Scriviamo magnitude e segnaliamo la direzione via running_status.
-            mag = min(abs(charge_p), 65535)
-            b.setValues(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, R.u16(mag))
-            # Running status: 1=standby, 2=charging, 3=discharging (codici Huawei)
-            if charge_p > 50:
-                bat_status = 2
-            elif charge_p < -50:
-                bat_status = 3
-            else:
-                bat_status = 1
-            b.setValues(R.ADDR_STORAGE_UNIT_1_RUNNING_STATUS, R.u16(bat_status))
+            # 37743 = VERO charge/discharge power Unit 1 (I32 W signed).
+            b.setValues(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, R.i32(charge_p))
 
-        # Smart meter DTSU666 (37100+) - layout TRIFASE corretto.
-        # Tensioni phase-N
+        # Smart meter Huawei (37100+) - layout ufficiale (NON il generico DTSU666).
+        # Le correnti stanno a 37107, l'active power totale a 37113.
+        b.setValues(R.ADDR_METER_STATUS, R.u16(1))  # 1 = meter normale
         b.setValues(R.ADDR_METER_VOLTAGE_A, R.i32(int(va * 10)))
         b.setValues(R.ADDR_METER_VOLTAGE_B, R.i32(int(vb * 10)))
         b.setValues(R.ADDR_METER_VOLTAGE_C, R.i32(int(vc * 10)))
-        # Tensioni line-line (sqrt(3) × media phase-N approssimato)
-        b.setValues(R.ADDR_METER_VOLTAGE_AB, R.i32(int(((va + vb) / 2) * 10 * 1.732)))
-        b.setValues(R.ADDR_METER_VOLTAGE_BC, R.i32(int(((vb + vc) / 2) * 10 * 1.732)))
-        b.setValues(R.ADDR_METER_VOLTAGE_CA, R.i32(int(((vc + va) / 2) * 10 * 1.732)))
-        # Correnti per fase (A * 100) - SIGNED, segno = direzione potenza per fase.
-        # Sul Deye DeyeModbusGridXCurrent e' magnitudo; deriviamo il segno da
-        # DeyeModbusGridXPower (negativo = export, positivo = import).
+        # Correnti per fase (I32 A * 100) — segno deriva dalla potenza per fase
+        # (positiva = import dalla rete, negativa = export verso la rete).
         gia = g("DeyeModbusGridACurrent") or 0
         gib = g("DeyeModbusGridBCurrent") or 0
         gic = g("DeyeModbusGridCCurrent") or 0
@@ -273,15 +249,14 @@ class HuaweiModbusEmulator:
         b.setValues(R.ADDR_METER_CURRENT_A, R.i32(int(gia * sign_a * 100)))
         b.setValues(R.ADDR_METER_CURRENT_B, R.i32(int(gib * sign_b * 100)))
         b.setValues(R.ADDR_METER_CURRENT_C, R.i32(int(gic * sign_c * 100)))
-        # Active power totale a 37119 (NON 37113! quello sono le correnti)
+        # Active power totale a 37113 (I32, W, +import / -export).
         grid_total = g("DeyeModbusGridTotal")
         if grid_total is None:
             grid_total = pga + pgb + pgc
         b.setValues(R.ADDR_METER_ACTIVE_POWER, R.i32(int(grid_total)))
-        # Active power per phase
-        b.setValues(R.ADDR_METER_ACTIVE_POWER_A, R.i32(int(pga)))
-        b.setValues(R.ADDR_METER_ACTIVE_POWER_B, R.i32(int(pgb)))
-        b.setValues(R.ADDR_METER_ACTIVE_POWER_C, R.i32(int(pgc)))
+        b.setValues(R.ADDR_METER_REACTIVE_POWER, R.i32(0))  # no dato OH
+        b.setValues(R.ADDR_METER_POWER_FACTOR, R.i16(1000))
+        b.setValues(R.ADDR_METER_FREQUENCY, R.i16(5000))
 
         # mark update success
         self._last_update_ts = time.time()

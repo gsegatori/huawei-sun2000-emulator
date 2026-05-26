@@ -158,9 +158,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "current_A_A": get_i32(R.ADDR_METER_CURRENT_A) / 100,
             "current_B_A": get_i32(R.ADDR_METER_CURRENT_B) / 100,
             "current_C_A": get_i32(R.ADDR_METER_CURRENT_C) / 100,
-            "active_power_A_W": get_i32(R.ADDR_METER_ACTIVE_POWER_A),
-            "active_power_B_W": get_i32(R.ADDR_METER_ACTIVE_POWER_B),
-            "active_power_C_W": get_i32(R.ADDR_METER_ACTIVE_POWER_C),
+            "reactive_power_var": get_i32(R.ADDR_METER_REACTIVE_POWER),
+            "frequency_Hz": get_i16(R.ADDR_METER_FREQUENCY) / 100,
         }
         return out
 

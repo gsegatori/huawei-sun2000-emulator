@@ -77,23 +77,26 @@ def test_apply_handles_missing_values():
     assert R.decode_u16(e.read_register(R.ADDR_DEVICE_STATUS, 1)) == R.STATUS_STANDBY_NO_IRRADIATION
 
 
-def test_battery_power_magnitude_and_status():
-    """Viaris bug: legge 37001 come U16 single reg. Scriviamo magnitudine
-    sempre positiva e codifichiamo direzione (carica/scarica/standby)
-    nel running_status a 37000."""
+def test_battery_power_i32_signed():
+    """37001 e 37743 sono I32 W signed (spec ufficiale Huawei): + carica,
+    - scarica. 37750 e' bus voltage U16 V*10 (NON power). 37000/37741
+    running status = 1 standby quando |charge_p|<=50W, 2 running altrimenti."""
     e = _make()
-    # Caso 1: PV avanza, batteria carica
+    # Caso 1: PV avanza, batteria carica (+6000 W)
     e.apply_values({"DeyeModbusPvPower": 8000, "DeyeModbusInverterTotal": 2000})
-    assert R.decode_u16(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 1)) == 6000
-    assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 2  # charging
-    # Caso 2: inverter eroga > PV, batteria scarica
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 6000
+    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == 6000
+    assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 2
+    # Caso 2: inverter eroga > PV, batteria scarica (-5316 W)
     e.apply_values({"DeyeModbusPvPower": 545, "DeyeModbusInverterTotal": 5861})
-    assert R.decode_u16(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 1)) == 5316
-    assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 3  # discharging
-    # Caso 3: standby (charge_p quasi zero)
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -5316
+    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == -5316
+    # Caso 3: standby
     e.apply_values({"DeyeModbusPvPower": 1000, "DeyeModbusInverterTotal": 1010})
-    assert R.decode_u16(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 1)) == 10
-    assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 1  # standby
+    assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 1
+    # 37750 e' bus voltage (NON power): deve essere ~7200 (720 V LUNA2000)
+    bus_v = R.decode_u16(e.read_register(R.ADDR_STORAGE_UNIT_1_BUS_VOLTAGE_ALT, 1))
+    assert bus_v == 7200
 
 
 def test_apply_negative_grid_power():

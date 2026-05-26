@@ -165,46 +165,40 @@ ADDR_BATTERY_TEMPERATURE = 37022          # I16 (°C * 10)
 ADDR_BATTERY_TOTAL_CHARGE = 37066         # U32 (kWh * 100)
 ADDR_BATTERY_TOTAL_DISCHARGE = 37068      # U32 (kWh * 100)
 
-# Smart meter Huawei DTSU666 (37100+) - layout TRIFASE STANDARD.
-# IMPORTANTE: in DTSU666 le correnti stanno a 37113, NON a 37107 -
-# a 37107-37112 ci sono le tensioni phase-N.
-ADDR_METER_STATUS = 37100                # U16 (1=normal)
-ADDR_METER_VOLTAGE_AB = 37101            # I32 (V * 10) line-line
-ADDR_METER_VOLTAGE_BC = 37103            # I32
-ADDR_METER_VOLTAGE_CA = 37105            # I32
-ADDR_METER_VOLTAGE_A = 37107             # I32 (V * 10) phase-N
-ADDR_METER_VOLTAGE_B = 37109             # I32
-ADDR_METER_VOLTAGE_C = 37111             # I32
-ADDR_METER_CURRENT_A = 37113             # I32 (A * 100) signed
-ADDR_METER_CURRENT_B = 37115             # I32
-ADDR_METER_CURRENT_C = 37117             # I32
-ADDR_METER_ACTIVE_POWER = 37119          # I32 (W) >0 import, <0 export
-ADDR_METER_REACTIVE_POWER = 37121        # I32 (VAR)
-ADDR_METER_POWER_FACTOR = 37123          # I16 (* 1000)
-ADDR_METER_FREQUENCY = 37124             # I16 (Hz * 100)
-ADDR_METER_POSITIVE_ACTIVE_ENERGY = 37125  # U32 (kWh * 100) imported from grid
-ADDR_METER_REVERSE_ACTIVE_ENERGY = 37127   # U32 (kWh * 100) exported to grid
-ADDR_METER_REACTIVE_POWER_Q1Q4 = 37129   # I32 (kVarh * 100)
-ADDR_METER_REACTIVE_POWER_Q2Q3 = 37131   # I32 (kVarh * 100)
-ADDR_METER_ACTIVE_POWER_A = 37133        # I32 (W) per-phase active power
-ADDR_METER_ACTIVE_POWER_B = 37135        # I32
-ADDR_METER_ACTIVE_POWER_C = 37137        # I32
+# Smart meter Huawei (37100+) — layout HUAWEI ufficiale (NON il DTSU666 generico):
+# le correnti stanno a 37107 e l'active power totale a 37113.
+# Fonti: wlcrs/huawei-solar-lib v2 registers.py + spec SUN2000MA V100R001C00SPC166.
+ADDR_METER_STATUS = 37100                  # U16 (0=offline, 1=normal)
+ADDR_METER_VOLTAGE_A = 37101               # I32 (V * 10) phase-N
+ADDR_METER_VOLTAGE_B = 37103               # I32
+ADDR_METER_VOLTAGE_C = 37105               # I32
+ADDR_METER_CURRENT_A = 37107               # I32 (A * 100) signed
+ADDR_METER_CURRENT_B = 37109               # I32
+ADDR_METER_CURRENT_C = 37111               # I32
+ADDR_METER_ACTIVE_POWER = 37113            # I32 (W) >0 import, <0 export
+ADDR_METER_REACTIVE_POWER = 37115          # I32 (VAR)
+ADDR_METER_POWER_FACTOR = 37117            # I16 (* 1000)
+ADDR_METER_FREQUENCY = 37118               # I16 (Hz * 100)
+ADDR_METER_POSITIVE_ACTIVE_ENERGY = 37119  # U32 (kWh * 100) imported from grid
+ADDR_METER_REVERSE_ACTIVE_ENERGY = 37121   # U32 (kWh * 100) exported to grid
 
-# Storage Unit 1 (LUNA2000) - schema HUAWEI 37738+
-# La Viaris (e altri client moderni) leggono questi address per la batteria.
+# Storage Unit 1 (LUNA2000) - layout HUAWEI 37738+
+# 37743 e' il VERO charge/discharge power Unit 1 (I32 W signed, +carica/-scarica)
+# 37750 e' bus voltage (U16 V*10), NON power
 ADDR_STORAGE_UNIT_1_SOC = 37738              # U16 (% * 10)
-ADDR_STORAGE_UNIT_1_RUNNING_STATUS = 37741   # U16
+ADDR_STORAGE_UNIT_1_RUNNING_STATUS = 37741   # U16 (0=offline,1=standby,2=running,3=fault,4=sleep)
+ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER = 37743  # I32 (W) +charge/-discharge
 ADDR_STORAGE_UNIT_1_BUS_VOLTAGE = 37746      # U16 (V * 10)
 ADDR_STORAGE_UNIT_1_BUS_CURRENT = 37747      # I16 (A * 10)
-ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER = 37750  # I32 (W)
+ADDR_STORAGE_UNIT_1_BUS_VOLTAGE_ALT = 37750  # U16 (V * 10) - registro che la Viaris polla con count=1
 ADDR_STORAGE_UNIT_1_TEMPERATURE = 37752      # I16 (°C * 10)
 ADDR_STORAGE_UNIT_1_TOTAL_CHARGE = 37753     # U32 (kWh * 100)
 ADDR_STORAGE_UNIT_1_TOTAL_DISCHARGE = 37755  # U32 (kWh * 100)
-ADDR_STORAGE_UNIT_1_SOH = 37743              # U16 (% * 10) - state of health
 
-# Control registers (47xxx): valori settabili dal client (Viaris, FusionSolar)
-# per controllare Active Power Limit, Storage Working Mode, ecc.
-ADDR_ACTIVE_POWER_CONTROL_MODE = 47075       # U16 (0=unlimited)
-ADDR_ACTIVE_POWER_FIXED_VALUE = 47076        # U32 (W, default = rated power)
-ADDR_ACTIVE_POWER_PERCENTAGE_DERATING = 47078  # I16 (% * 10, 1000 = 100%)
-ADDR_STORAGE_WORKING_MODE = 47086            # U16 (0=adaptive)
+# Control registers (47xxx) settabili dal client (Viaris, FusionSolar):
+# limit di potenza carica/scarica della batteria e modalita' di gestione.
+ADDR_MAX_CHARGING_POWER = 47075       # U32 (W) 0=no limit
+ADDR_MAX_DISCHARGING_POWER = 47077    # U32 (W) 0=no limit; la Viaris scrive 0 qui all'handshake
+ADDR_CHARGING_CUTOFF_SOC = 47081      # U16 (% * 10)
+ADDR_DISCHARGE_CUTOFF_SOC = 47082     # U16 (% * 10)
+ADDR_STORAGE_WORKING_MODE = 47086     # U16 (0=adaptive, 1=fixed, 2=max self-consumption, 3=TOU-LG, 4=fully-fed, 5=TOU-LUNA2000)
