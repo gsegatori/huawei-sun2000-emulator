@@ -206,8 +206,12 @@ class HuaweiModbusEmulator:
         ac_temp = g("DeyeModbusAcTemp") or g("DeyeModbusDcTemp") or 25
         b.setValues(R.ADDR_INTERNAL_TEMPERATURE, R.i16(int(ac_temp * 10)))
 
-        # Device status: running se PV>50W, altrimenti standby_no_irradiation
-        status = R.STATUS_ON_GRID_RUNNING if pv_tot > 50 else R.STATUS_STANDBY_NO_IRRADIATION
+        # Device status: ON_GRID_RUNNING se l'inverter sta erogando qualunque
+        # cosa (PV o batteria). La Viaris cambia formula tra "running" e
+        # "standby" e di notte (PV=0) dovremmo mostrare running perche'
+        # eroghiamo comunque dalla batteria.
+        inverter_active = (pv_tot or 0) > 50 or (active_total_real or 0) > 50
+        status = R.STATUS_ON_GRID_RUNNING if inverter_active else R.STATUS_STANDBY_NO_IRRADIATION
         b.setValues(R.ADDR_DEVICE_STATUS, R.u16(status))
         b.setValues(R.ADDR_STATE_1, R.u16(0x0001 if status == R.STATUS_ON_GRID_RUNNING else 0))
 
