@@ -53,57 +53,64 @@ DEYE_ITEMS = [
 ]
 
 
-# ROUND 3 — test diagnostico: cambio SOLO Grid (37113) per isolare 'Rete'.
+# ROUND 4 — TEST IMBROGLIO: target battery scarica 0.9 kW.
 #
-# Conclusioni Round 1+2:
-#  - Solar = 32064 (Input Power DC) — conferma
-#  - SoC = 37738 — conferma
-#  - Battery = formula calcolata = Solar - Home + Rete_export
-#  - Home dipende anche dal PV (composita)
+# FORMULE VIARIS confermate nei round 1-3:
+#   Solar_display = PV_mock (32064)
+#   Battery_display = 2 × (PV_mock - AC_mock)
+#   Home_display = 2×AC_mock - PV_mock + |Grid_A_phase_mock|
+#   Rete_display = |Grid_A_phase_mock|
+#   SoC_display = 37738
 #
-# Cambia SOLO Grid_total rispetto a Round 2:
-#   PV = 7777 W (INVARIATO)
-#   Inverter AC = 4321 W (INVARIATO)
-#   Grid_total = -2345 W (NUOVO, era -2000)  <-- valore-spia
-#   Grid per fase: A=-1000, B=-700, C=-645 (sum -2345, DISTINTI per indagare phase)
-#   Load = 4321 - 2345 = 1976 W (per mantenere bilancio AC=Load+GridExport)
-#   Battery_charge = 7777 - 4321 = 3456 W (invariato)
+# Per far apparire BATTERY CORRETTA, "imbroghiamo" AC_mock:
+#   AC_mock = (PV_real + AC_inverter_real) / 2
+# Cosi' la formula 2×(PV-AC) restituisce battery_real.
+#
+# Scenario simulato (REALI):
+#   PV_real            = 1200 W (Solar atteso 1.2 kW)
+#   AC_inverter_real   = 2100 W
+#   Battery_real       = PV-AC = -900 W (scarica)
+#   Grid_real          = +600 W (import)
+#   Load_real          = 2700 W (casa consuma)
+#
+# Mock IMBROGLIATI:
+#   PV_mock     = 1200 (= PV_real)
+#   AC_mock     = (1200+2100)/2 = 1650
+#   Grid_A_mock = 600 (= |Grid_real|, solo fase A)
 #
 # PREDIZIONI Viaris display:
-#   Solar      = 7.82 kW (PV invariato)
-#   Rete (Inst.power) =
-#       SE 0.78 kW -> Rete = |Grid_total|/3 = 2345/3 = 781 (per-fase media)
-#       SE 1.00 kW -> Rete = |Grid_A_phase|/1 = 1000 (fase A specifica)
-#       SE 2.35 kW -> Rete = |Grid_total|/1 = 2345 (totale)
-#       SE altro   -> da indagare
-#   Battery    = Solar - Home + Rete (formula confermata)
-#   Home       = derivato (cambia con Grid?)
+#   Solar      = 1.2 kW
+#   Battery    = 2×(1200-1650) = -900 -> 0.9 kW DISCHARGING
+#   Home       = 2×1650 - 1200 + 600 = 2700 -> 2.7 kW
+#   Rete       = 0.6 kW
+#   SoC        = 75%
 MOCK_ITEMS: dict[str, float] = {
-    # PV input DC INVARIATO (Round 2)
-    "DeyeModbusPv1Power": 3888.0,
-    "DeyeModbusPv2Power": 3889.0,
-    "DeyeModbusPvPower": 7777.0,
-    # Inverter AC output INVARIATO
-    "DeyeModbusInverterAPower": 1421.0,
-    "DeyeModbusInverterBPower": 1450.0,
-    "DeyeModbusInverterCPower": 1450.0,
-    "DeyeModbusInverterTotal": 4321.0,
-    "DeyeModbusInverterACurrent": 6.5,
-    "DeyeModbusInverterBCurrent": 6.3,
-    "DeyeModbusInverterCCurrent": 6.0,
+    # PV input DC: PV_real = 1200 W
+    "DeyeModbusPv1Power": 600.0,
+    "DeyeModbusPv2Power": 600.0,
+    "DeyeModbusPvPower": 1200.0,
+    # Inverter AC output IMBROGLIATO a 1650 W (= (PV_real+AC_real)/2)
+    "DeyeModbusInverterAPower": 550.0,
+    "DeyeModbusInverterBPower": 550.0,
+    "DeyeModbusInverterCPower": 550.0,
+    "DeyeModbusInverterTotal": 1650.0,
+    "DeyeModbusInverterACurrent": 2.5,
+    "DeyeModbusInverterBCurrent": 2.4,
+    "DeyeModbusInverterCCurrent": 2.3,
     "DeyeModbusInverterAVoltage": 220.0,
     "DeyeModbusInverterBVoltage": 230.0,
     "DeyeModbusInverterCVoltage": 240.0,
-    # Grid meter - VALORE SPIA Round 3: -2345 W, fasi DISTINTE
-    "DeyeModbusGridTotal": -2345.0,
-    "DeyeModbusGridAPower": -1000.0,  # fase A grossa
-    "DeyeModbusGridBPower": -700.0,   # fase B media
-    "DeyeModbusGridCPower": -645.0,   # fase C piccola (sum = -2345)
-    "DeyeModbusGridACurrent": 4.5,
-    "DeyeModbusGridBCurrent": 3.0,
-    "DeyeModbusGridCCurrent": 2.8,
-    # Load: 1976 W (per mantenere bilancio AC = Load + Grid_export)
-    "DeyeModbusLoadTotal": 1976.0,
+    # Grid meter: import +600 W solo fase A
+    "DeyeModbusGridTotal": 600.0,
+    "DeyeModbusGridAPower": 600.0,
+    "DeyeModbusGridBPower": 0.0,
+    "DeyeModbusGridCPower": 0.0,
+    "DeyeModbusGridACurrent": 2.7,
+    "DeyeModbusGridBCurrent": 0.0,
+    "DeyeModbusGridCCurrent": 0.0,
+    # Load 2700 W (= casa)
+    "DeyeModbusLoadTotal": 2700.0,
+    # SoC: 75% (invariato), Battery temp/Inverter temp invariati
     "DeyeModbusBatterySoc": 75.0,
     "DeyeModbusBatteryTemp": 28.0,
     "DeyeModbusAcTemp": 35.0,
