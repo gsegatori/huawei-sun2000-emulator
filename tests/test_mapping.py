@@ -77,18 +77,23 @@ def test_apply_handles_missing_values():
     assert R.decode_u16(e.read_register(R.ADDR_DEVICE_STATUS, 1)) == R.STATUS_STANDBY_NO_IRRADIATION
 
 
-def test_battery_power_sign_convention():
-    """Huawei: +charge, -discharge. P_batt = P_pv - P_inverter_out."""
+def test_battery_power_magnitude_and_status():
+    """Viaris bug: legge 37001 come U16 single reg. Scriviamo magnitudine
+    sempre positiva e codifichiamo direzione (carica/scarica/standby)
+    nel running_status a 37000."""
     e = _make()
     # Caso 1: PV avanza, batteria carica
     e.apply_values({"DeyeModbusPvPower": 8000, "DeyeModbusInverterTotal": 2000})
-    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 6000
+    assert R.decode_u16(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 1)) == 6000
+    assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 2  # charging
     # Caso 2: inverter eroga > PV, batteria scarica
     e.apply_values({"DeyeModbusPvPower": 545, "DeyeModbusInverterTotal": 5861})
-    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -5316
-    # Caso 3: notte senza PV, scarica completa
-    e.apply_values({"DeyeModbusPvPower": 0, "DeyeModbusInverterTotal": 3000})
-    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -3000
+    assert R.decode_u16(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 1)) == 5316
+    assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 3  # discharging
+    # Caso 3: standby (charge_p quasi zero)
+    e.apply_values({"DeyeModbusPvPower": 1000, "DeyeModbusInverterTotal": 1010})
+    assert R.decode_u16(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 1)) == 10
+    assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 1  # standby
 
 
 def test_apply_negative_grid_power():

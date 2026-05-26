@@ -210,12 +210,24 @@ class HuaweiModbusEmulator:
             btemp = g("DeyeModbusBatteryTemp") or 25
             b.setValues(R.ADDR_BATTERY_SOC, R.u16(int(soc * 10)))
             b.setValues(R.ADDR_BATTERY_TEMPERATURE, R.i16(int(btemp * 10)))
-            # Battery power (convenzione Huawei: + = carica, - = scarica).
             # Bilancio AC inverter ibrido: P_pv = P_inverter_out + P_batt_charge
             # quindi P_batt = P_pv - P_inverter_out (se PV avanza si carica,
             # se l'inverter eroga piu' del PV la batteria si scarica).
             charge_p = int((pv_tot or 0) - (active_total or 0))
-            b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, R.i32(charge_p))
+            # Viaris legge 37001 come U16 single reg (anche se spec dice I32):
+            # scrivendo I32 signed negativo, lei vede 0xFFFF=65535. Soluzione:
+            # magnitude in U16 + direzione via running_status 37000.
+            mag_aggr = min(abs(charge_p), 65535)
+            b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, R.u16(mag_aggr))
+            b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER + 1, R.u16(0))  # azzera low word
+            # Running status: 1=standby, 2=charging, 3=discharging
+            if charge_p > 50:
+                bat_status = 2
+            elif charge_p < -50:
+                bat_status = 3
+            else:
+                bat_status = 1
+            b.setValues(R.ADDR_BATTERY_RUNNING_STATUS, R.u16(bat_status))
             # Storage Unit 1 (LUNA2000) layout 37738+ - letti dalla Viaris.
             b.setValues(R.ADDR_STORAGE_UNIT_1_SOC, R.u16(int(soc * 10)))
             b.setValues(R.ADDR_STORAGE_UNIT_1_BUS_VOLTAGE, R.u16(7200))  # 720.0 V nominale
