@@ -261,8 +261,11 @@ class HuaweiModbusEmulator:
             btemp = g("DeyeModbusBatteryTemp") or 25
             b.setValues(R.ADDR_BATTERY_SOC, R.u16(int(soc * 10)))
             b.setValues(R.ADDR_BATTERY_TEMPERATURE, R.i16(int(btemp * 10)))
-            # charge/discharge power: derivato da PV - Inverter (se >0 = carica)
-            charge_p = int((pv_tot - (active_total or 0)) - (g("DeyeModbusLoadTotal") or 0))
+            # Battery power (convenzione Huawei: + = carica, - = scarica).
+            # Bilancio AC inverter ibrido: P_pv = P_inverter_out + P_batt_charge
+            # quindi P_batt = P_pv - P_inverter_out (se PV avanza si carica,
+            # se l'inverter eroga piu' del PV la batteria si scarica).
+            charge_p = int((pv_tot or 0) - (active_total or 0))
             b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, R.i32(charge_p))
 
         # Smart meter (37100+) — sostituisce il meter Huawei DDSU666 collegato all'inverter

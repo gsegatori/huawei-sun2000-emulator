@@ -77,6 +77,20 @@ def test_apply_handles_missing_values():
     assert R.decode_u16(e.read_register(R.ADDR_DEVICE_STATUS, 1)) == R.STATUS_STANDBY_NO_IRRADIATION
 
 
+def test_battery_power_sign_convention():
+    """Huawei: +charge, -discharge. P_batt = P_pv - P_inverter_out."""
+    e = _make()
+    # Caso 1: PV avanza, batteria carica
+    e.apply_values({"DeyeModbusPvPower": 8000, "DeyeModbusInverterTotal": 2000})
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 6000
+    # Caso 2: inverter eroga > PV, batteria scarica
+    e.apply_values({"DeyeModbusPvPower": 545, "DeyeModbusInverterTotal": 5861})
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -5316
+    # Caso 3: notte senza PV, scarica completa
+    e.apply_values({"DeyeModbusPvPower": 0, "DeyeModbusInverterTotal": 3000})
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -3000
+
+
 def test_apply_negative_grid_power():
     """Grid power negativo (export) deve essere preservato come signed I32."""
     e = _make()
