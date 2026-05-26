@@ -113,13 +113,14 @@ class HuaweiModbusEmulator:
             self._block.setValues(R.ADDR_STORAGE_UNIT_1_SOH, R.u16(1000))    # 100.0% SoH
         else:
             self._block.setValues(R.ADDR_BATTERY_RUNNING_STATUS, R.u16(0))  # offline
-        # Control registers (47075-47086) pre-impostati cosi' che la Viaris al
-        # primo read trovi valori "plausibili" e non senta il bisogno di
-        # scrivere FC=16 (che generava il ciclo Connected/Not connected).
-        self._block.setValues(R.ADDR_ACTIVE_POWER_CONTROL_MODE, R.u16(0))  # 0 = no limit
-        self._block.setValues(R.ADDR_ACTIVE_POWER_FIXED_VALUE, R.u32(s.huawei_rated_power_w))
-        self._block.setValues(R.ADDR_ACTIVE_POWER_PERCENTAGE_DERATING, R.i16(1000))  # 100.0%
-        self._block.setValues(R.ADDR_STORAGE_WORKING_MODE, R.u16(0))  # 0 = adaptive
+        # Control registers (47075-47086) pre-impostati a 0/no-limit. La
+        # Viaris all'handshake scrive comunque [0, 0] su 47077-47078 per
+        # disattivare ogni limit. Pre-mettendolo a 0 evitiamo la write
+        # ridondante e qualunque side-effect su altri client.
+        self._block.setValues(R.ADDR_ACTIVE_POWER_CONTROL_MODE, R.u16(0))   # 0 = no limit
+        self._block.setValues(R.ADDR_ACTIVE_POWER_FIXED_VALUE, R.u32(0))     # 0 = unlimited
+        self._block.setValues(R.ADDR_ACTIVE_POWER_PERCENTAGE_DERATING, R.i16(0))
+        self._block.setValues(R.ADDR_STORAGE_WORKING_MODE, R.u16(0))         # 0 = adaptive
 
     def apply_values(self, items: dict[str, float | None]) -> None:
         """Aggiorna i registri runtime dai valori OH (gia' parsed)."""
