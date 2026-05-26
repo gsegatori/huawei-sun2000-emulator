@@ -89,6 +89,12 @@ async def test_modbus_server_serves_huawei_registers():
             rr = await client.read_holding_registers(R.ADDR_SOFTWARE_VERSION, count=15, slave=1)
             assert not rr.isError()
             assert R.decode_string(rr.registers).startswith("V100R001")
+
+            # Il server deve rispondere a TUTTI gli unit_id (single=True) -
+            # alcuni client Huawei (Viaris, SmartLogger) usano slave_id non standard.
+            for uid in (0, 13, 100, 247):
+                rr = await client.read_holding_registers(R.ADDR_ACTIVE_POWER, count=2, slave=uid)
+                assert not rr.isError(), f"unit_id={uid} should also reply (single=True), got {rr}"
         finally:
             client.close()
     finally:

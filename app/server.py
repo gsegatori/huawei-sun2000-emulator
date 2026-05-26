@@ -45,7 +45,11 @@ class HuaweiModbusEmulator:
         # subito; i registri runtime vengono popolati dal poller OH.
         self._block = ModbusSequentialDataBlock(_HR_BASE, [0] * _HR_SPAN)
         self._slave = ModbusSlaveContext(hr=self._block, zero_mode=True)
-        self.context = ModbusServerContext(slaves={settings.modbus_unit_id: self._slave}, single=False)
+        # single=True -> il server risponde a QUALUNQUE unit_id con lo stesso
+        # datastore. Necessario perche' la Viaris e altri client Huawei usano
+        # unit_id non standard (0, 1, 13...) a seconda del firmware/modello.
+        # MODBUS_UNIT_ID nel .env diventa puramente informativo per /healthz.
+        self.context = ModbusServerContext(slaves=self._slave, single=True)
         self._populate_identity()
         self._last_update_ts: float = 0.0
         self._last_update_ok: bool = False
