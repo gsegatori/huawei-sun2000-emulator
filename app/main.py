@@ -94,6 +94,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def admin_config():
         return settings.model_dump()
 
+    @app.get("/admin/dashboard")
+    async def admin_dashboard_json():
+        """Snapshot Live Deye/OH → Mock Huawei → Predicted Viaris (per cruscotto)."""
+        t = emulator.last_translation
+        return {
+            "translation": t,
+            "last_update_ok": emulator.last_update_ok,
+            "last_update_age_s": round(time.time() - emulator.last_update_ts, 1) if emulator.last_update_ts else None,
+            "mock_mode": settings.mock_mode,
+            "poll_interval_s": settings.poll_interval_s,
+        }
+
+    @app.get("/dashboard", response_class=HTMLResponse)
+    async def dashboard_html():
+        return DASHBOARD_HTML
+
     @app.get("/admin/recent-requests")
     async def admin_recent_requests():
         """Ring buffer delle ultime PDU Modbus ricevute (debug: capire cosa
@@ -227,6 +243,155 @@ async function reload() {
 }
 reload();
 setInterval(reload, 5000);
+</script>
+</body>
+</html>
+"""
+
+
+DASHBOARD_HTML = """<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Huawei Emulator — Cruscotto Validazione</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 1400px;
+         margin: 1em auto; padding: 0 1em; background: #f5f5f5; color: #222; font-size: 14px; }
+  h1 { margin: 0.3em 0 0.5em; }
+  h1 small { color: #888; font-size: .55em; font-weight: normal; }
+  .meta { color: #666; font-size: .9em; margin-bottom: 1em; }
+  .pill { display: inline-block; padding: .15em .65em; border-radius: 100px;
+          font-size: .85em; font-weight: 600; margin-right: .5em; }
+  .pill.ok { background: #d4f5d4; color: #060; }
+  .pill.err { background: #fcd; color: #900; }
+  .pill.mock { background: #ffe9b3; color: #835c00; }
+  .pill.live { background: #cce6ff; color: #003a73; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1em; }
+  .col { background: white; padding: 1em 1.2em; border-radius: 8px;
+         box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .col h2 { border-bottom: 2px solid; padding-bottom: .3em; margin-top: 0; }
+  .col.live h2  { border-color: #2080d0; color: #2080d0; }
+  .col.mock h2  { border-color: #d08020; color: #d08020; }
+  .col.viaris h2 { border-color: #20a060; color: #20a060; }
+  table { width: 100%; border-collapse: collapse; font-size: .92em; }
+  td { padding: .35em .4em; border-bottom: 1px solid #eee; }
+  td.k { color: #555; font-family: ui-monospace, monospace; font-size: .88em; }
+  td.v { text-align: right; font-weight: 600; font-family: ui-monospace, monospace; }
+  td.v.signed.neg { color: #c30; }
+  td.v.signed.pos { color: #080; }
+  .raw-json { background: #1e1e1e; color: #ddd; padding: .8em 1em; border-radius: 5px;
+              font-family: ui-monospace, monospace; font-size: .78em; margin-top: 1.5em;
+              overflow-x: auto; white-space: pre-wrap; }
+  .toggle { font-size: .85em; color: #2080d0; cursor: pointer; text-decoration: underline; }
+  details { margin-top: 1em; }
+  summary { cursor: pointer; color: #2080d0; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Huawei SUN2000 Emulator — Cruscotto Validazione <small>real-time</small></h1>
+<div class="meta">
+  <span id="mock-pill" class="pill mock">MOCK</span>
+  <span id="status-pill" class="pill">caricamento...</span>
+  Ultimo update: <span id="age">-</span>s fa.
+  Auto-refresh ogni 2s.
+</div>
+
+<div class="grid">
+  <div class="col live">
+    <h2>🔵 Live Deye / OH</h2>
+    <table id="t-live"></table>
+  </div>
+  <div class="col mock">
+    <h2>🟠 Mock Huawei (registri)</h2>
+    <table id="t-mock"></table>
+  </div>
+  <div class="col viaris">
+    <h2>🟢 Atteso Viaris display</h2>
+    <table id="t-viaris"></table>
+  </div>
+</div>
+
+<details>
+  <summary>Raw JSON</summary>
+  <pre class="raw-json" id="raw"></pre>
+</details>
+
+<script>
+function fmt(v, unit) {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === 'number') return v.toLocaleString('en-US') + (unit ? ' ' + unit : '');
+  if (Array.isArray(v)) return v.map(x => fmt(x)).join(' / ');
+  return String(v);
+}
+function row(k, v, unit, signed) {
+  const tr = document.createElement('tr');
+  const tk = document.createElement('td'); tk.className = 'k'; tk.textContent = k;
+  const tv = document.createElement('td');
+  tv.className = 'v' + (signed ? ' signed ' + (typeof v === 'number' && v < 0 ? 'neg' : 'pos') : '');
+  tv.textContent = fmt(v, unit);
+  tr.appendChild(tk); tr.appendChild(tv);
+  return tr;
+}
+function fill(id, rows) {
+  const t = document.getElementById(id);
+  t.innerHTML = '';
+  for (const [k, v, unit, signed] of rows) t.appendChild(row(k, v, unit, signed));
+}
+async function refresh() {
+  try {
+    const r = await (await fetch('/admin/dashboard')).json();
+    const t = r.translation || {};
+    document.getElementById('mock-pill').textContent = r.mock_mode ? 'MOCK MODE' : 'LIVE DATA';
+    document.getElementById('mock-pill').className = 'pill ' + (r.mock_mode ? 'mock' : 'live');
+    const ok = r.last_update_ok;
+    document.getElementById('status-pill').textContent = ok ? 'OK' : 'ERROR';
+    document.getElementById('status-pill').className = 'pill ' + (ok ? 'ok' : 'err');
+    document.getElementById('age').textContent = r.last_update_age_s != null ? r.last_update_age_s : '-';
+
+    const live = t.live || {};
+    fill('t-live', [
+      ['PV totale', live.pv_total_W, 'W'],
+      ['Inverter AC output', live.inverter_ac_total_W, 'W'],
+      ['Grid total (signed)', live.grid_total_W_signed, 'W', true],
+      ['Load Casa', live.load_total_W, 'W'],
+      ['Battery output (Deye: + scarica)', live.battery_output_W_deye_signed, 'W', true],
+      ['Battery SoC', live.battery_soc_pct, '%'],
+      ['Battery temperatura', live.battery_temp_C, '°C'],
+      ['Inverter temperatura', live.inverter_temp_C, '°C'],
+      ['Voltages V A/B/C', live.voltages_phase_V, 'V'],
+      ['Currents inverter A/B/C', live.inverter_currents_A, 'A'],
+      ['Currents grid A/B/C', live.grid_currents_A, 'A'],
+    ]);
+
+    const m = t.mock_huawei_regs || {};
+    fill('t-mock', [
+      ['32064 input power DC', m['32064_input_power_W'], 'W'],
+      ['32080 active power AC', m['32080_active_power_W'], 'W'],
+      ['37001 battery charge (signed)', m['37001_battery_charge_W_signed'], 'W', true],
+      ['37113 meter active (signed)', m['37113_meter_active_W_signed'], 'W', true],
+      ['37738 SoC (×10)', m['37738_soc_pct_x10'], ''],
+      ['Imbroglio attivo?', m._imbroglio_active ? 'SI' : 'no'],
+    ]);
+
+    const v = t.predicted_viaris || {};
+    fill('t-viaris', [
+      ['Solar', v.Solar_kW, 'kW'],
+      ['Battery (signed)', v.Battery_kW_signed, 'kW', true],
+      ['Home/Casa', v.Home_kW, 'kW'],
+      ['Rete (signed: +export -import)', v.Rete_kW_signed, 'kW', true],
+      ['SoC', v.SoC_pct, '%'],
+    ]);
+
+    document.getElementById('raw').textContent = JSON.stringify(r, null, 2);
+  } catch (e) {
+    document.getElementById('status-pill').textContent = 'fetch error';
+    document.getElementById('status-pill').className = 'pill err';
+    console.error(e);
+  }
+}
+refresh();
+setInterval(refresh, 2000);
 </script>
 </body>
 </html>

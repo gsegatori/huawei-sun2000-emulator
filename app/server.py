@@ -78,6 +78,14 @@ class HuaweiModbusEmulator:
     def read_register(self, address: int, count: int = 1) -> list[int]:
         return list(self._block.getValues(address, count))
 
+    # ───── translation view (cruscotto Live → Mock → Viaris) ─────
+
+    @property
+    def last_translation(self) -> dict | None:
+        """Ultimo snapshot {input_values, mock_regs, predicted_viaris} per il
+        cruscotto di validazione. Popolato da apply_values()."""
+        return getattr(self, "_last_translation", None)
+
     # ───── implementation ─────
 
     def _populate_identity(self) -> None:
@@ -258,6 +266,41 @@ class HuaweiModbusEmulator:
         b.setValues(R.ADDR_METER_POWER_FACTOR, R.i16(1000))
         b.setValues(R.ADDR_METER_FREQUENCY, R.i16(5000))
 
+        # Calcola la view del cruscotto: Live Deye → Mock Huawei → Predicted Viaris
+        grid_a_phase = pga  # mio Grid_A_phase (signed: +import, -export)
+        self._last_translation = {
+            "live": {
+                "pv_total_W": pv_tot,
+                "inverter_ac_total_W": active_total or 0,
+                "grid_total_W_signed": g("DeyeModbusGridTotal") or 0,
+                "load_total_W": g("DeyeModbusLoadTotal") or 0,
+                "battery_output_W_deye_signed": -(charge_p),  # convenzione Deye: +scarica/-carica
+                "battery_soc_pct": g("DeyeModbusBatterySoc") or 0,
+                "battery_temp_C": g("DeyeModbusBatteryTemp"),
+                "inverter_temp_C": g("DeyeModbusAcTemp"),
+                "voltages_phase_V": [va, vb, vc],
+                "inverter_currents_A": [g("DeyeModbusInverterACurrent"),
+                                        g("DeyeModbusInverterBCurrent"),
+                                        g("DeyeModbusInverterCCurrent")],
+                "grid_currents_A": [gia, gib, gic],
+            },
+            "mock_huawei_regs": {
+                "32064_input_power_W": int(pv_tot or 0),
+                "32080_active_power_W": int(active_total or 0),
+                "37001_battery_charge_W_signed": charge_p,
+                "37113_meter_active_W_signed": int(g("DeyeModbusGridTotal") or 0),
+                "37738_soc_pct_x10": int((g("DeyeModbusBatterySoc") or 0) * 10),
+                "_imbroglio_active": False,  # apply_values "raw" non imbroglia ancora
+            },
+            "predicted_viaris": {
+                # Formule confermate nei round 1-5:
+                "Solar_kW": round((pv_tot or 0) / 1000, 2),
+                "Battery_kW_signed": round(2 * ((pv_tot or 0) - (active_total or 0)) / 1000, 2),
+                "Home_kW": round((2 * (active_total or 0) - (pv_tot or 0) - grid_a_phase) / 1000, 2),
+                "Rete_kW_signed": round(-grid_a_phase / 1000, 2),
+                "SoC_pct": int(g("DeyeModbusBatterySoc") or 0),
+            },
+        }
         # mark update success
         self._last_update_ts = time.time()
         self._last_update_ok = True
