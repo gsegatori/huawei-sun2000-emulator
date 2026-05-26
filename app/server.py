@@ -263,7 +263,10 @@ class HuaweiModbusEmulator:
             b.setValues(R.ADDR_STORAGE_UNIT_1_BUS_CURRENT, R.i16(int((charge_p / 720) * 10)))
             b.setValues(R.ADDR_STORAGE_UNIT_1_TEMPERATURE, R.i16(int(btemp * 10)))
             # 37743 = VERO charge/discharge power Unit 1 (I32 W signed).
-            b.setValues(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, R.i32(charge_p))
+            # Stesso clamp di 37001: la Viaris di notte sembra usare anche
+            # 37743 per derivare Home (probabile formula Home=32080+|37743|).
+            # Senza clamp, |37743|=AC_real -> Home sballato 1.5x.
+            b.setValues(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, R.i32(charge_p_clamped))
 
         # Smart meter Huawei (37100+) - layout ufficiale (NON il generico DTSU666).
         # Le correnti stanno a 37107, l'active power totale a 37113.
