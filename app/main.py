@@ -152,9 +152,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         out["meter"] = {
             "active_power_W": get_i32(R.ADDR_METER_ACTIVE_POWER),
-            "voltage_A_V": get_i32(R.ADDR_METER_GRID_VOLTAGE_A) / 10,
-            "voltage_B_V": get_i32(R.ADDR_METER_GRID_VOLTAGE_B) / 10,
-            "voltage_C_V": get_i32(R.ADDR_METER_GRID_VOLTAGE_C) / 10,
+            "voltage_A_V": get_i32(R.ADDR_METER_VOLTAGE_A) / 10,
+            "voltage_B_V": get_i32(R.ADDR_METER_VOLTAGE_B) / 10,
+            "voltage_C_V": get_i32(R.ADDR_METER_VOLTAGE_C) / 10,
+            "current_A_A": get_i32(R.ADDR_METER_CURRENT_A) / 100,
+            "current_B_A": get_i32(R.ADDR_METER_CURRENT_B) / 100,
+            "current_C_A": get_i32(R.ADDR_METER_CURRENT_C) / 100,
+            "active_power_A_W": get_i32(R.ADDR_METER_ACTIVE_POWER_A),
+            "active_power_B_W": get_i32(R.ADDR_METER_ACTIVE_POWER_B),
+            "active_power_C_W": get_i32(R.ADDR_METER_ACTIVE_POWER_C),
         }
         return out
 

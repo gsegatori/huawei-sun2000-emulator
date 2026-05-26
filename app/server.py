@@ -29,11 +29,12 @@ log = logging.getLogger(__name__)
 # capire cosa client esterni (Viaris, FusionSolar...) leggono in pratica.
 RECENT_PDU: deque = deque(maxlen=200)
 
-# Range pre-allocato dei registri Huawei: dal 30000 (device info / model) al
-# 39999 (oltre i registri meter/battery 37xxx). 10000 reg = ~20 KB di RAM,
-# trascurabile, e copre l'intera mappa Huawei usata da app commerciali.
+# Range pre-allocato dei registri Huawei: dal 30000 (device info) fino al
+# 49999. Serve coprire ANCHE i registri di controllo a 47xxx (es. 47077 e' un
+# control register che la Viaris legge/scrive ciclicamente). 20000 reg
+# = ~40 KB di RAM, trascurabile.
 _HR_BASE = 30000
-_HR_SPAN = 10000
+_HR_SPAN = 20000
 
 
 class HuaweiModbusEmulator:
@@ -193,7 +194,8 @@ class HuaweiModbusEmulator:
             kwh = prod_total_mwh * 1000
         b.setValues(R.ADDR_ACCUMULATED_YIELD, R.u32(int(kwh * 100)))
 
-        # Battery
+        # Battery aggregata (37000+)
+        charge_p = 0
         if self._settings.huawei_has_battery:
             soc = g("DeyeModbusBatterySoc") or 0
             btemp = g("DeyeModbusBatteryTemp") or 25
@@ -205,27 +207,47 @@ class HuaweiModbusEmulator:
             # se l'inverter eroga piu' del PV la batteria si scarica).
             charge_p = int((pv_tot or 0) - (active_total or 0))
             b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, R.i32(charge_p))
+            # Storage Unit 1 (LUNA2000) layout 37738+ - letti dalla Viaris.
+            b.setValues(R.ADDR_STORAGE_UNIT_1_SOC, R.u16(int(soc * 10)))
+            b.setValues(R.ADDR_STORAGE_UNIT_1_RUNNING_STATUS, R.u16(2))  # running
+            b.setValues(R.ADDR_STORAGE_UNIT_1_BUS_VOLTAGE, R.u16(7200))  # 720.0 V nominale
+            b.setValues(R.ADDR_STORAGE_UNIT_1_BUS_CURRENT, R.i16(int((charge_p / 720) * 10)))
+            b.setValues(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, R.i32(charge_p))
+            b.setValues(R.ADDR_STORAGE_UNIT_1_TEMPERATURE, R.i16(int(btemp * 10)))
 
-        # Smart meter (37100+) — sostituisce il meter Huawei DDSU666 collegato all'inverter
-        gva = int(va * 10)
-        gvb = int(vb * 10)
-        gvc = int(vc * 10)
-        b.setValues(R.ADDR_METER_GRID_VOLTAGE_A, R.i32(gva))
-        b.setValues(R.ADDR_METER_GRID_VOLTAGE_B, R.i32(gvb))
-        b.setValues(R.ADDR_METER_GRID_VOLTAGE_C, R.i32(gvc))
+        # Smart meter DTSU666 (37100+) - layout TRIFASE corretto.
+        # Tensioni phase-N
+        b.setValues(R.ADDR_METER_VOLTAGE_A, R.i32(int(va * 10)))
+        b.setValues(R.ADDR_METER_VOLTAGE_B, R.i32(int(vb * 10)))
+        b.setValues(R.ADDR_METER_VOLTAGE_C, R.i32(int(vc * 10)))
+        # Tensioni line-line (sqrt(3) × media phase-N approssimato)
+        b.setValues(R.ADDR_METER_VOLTAGE_AB, R.i32(int(((va + vb) / 2) * 10 * 1.732)))
+        b.setValues(R.ADDR_METER_VOLTAGE_BC, R.i32(int(((vb + vc) / 2) * 10 * 1.732)))
+        b.setValues(R.ADDR_METER_VOLTAGE_CA, R.i32(int(((vc + va) / 2) * 10 * 1.732)))
+        # Correnti per fase (A * 100) - SIGNED, segno = direzione potenza per fase.
+        # Sul Deye DeyeModbusGridXCurrent e' magnitudo; deriviamo il segno da
+        # DeyeModbusGridXPower (negativo = export, positivo = import).
         gia = g("DeyeModbusGridACurrent") or 0
         gib = g("DeyeModbusGridBCurrent") or 0
         gic = g("DeyeModbusGridCCurrent") or 0
-        b.setValues(R.ADDR_METER_GRID_CURRENT_A, R.i32(int(gia * 100)))
-        b.setValues(R.ADDR_METER_GRID_CURRENT_B, R.i32(int(gib * 100)))
-        b.setValues(R.ADDR_METER_GRID_CURRENT_C, R.i32(int(gic * 100)))
+        pga = g("DeyeModbusGridAPower") or 0
+        pgb = g("DeyeModbusGridBPower") or 0
+        pgc = g("DeyeModbusGridCPower") or 0
+        sign_a = -1 if pga < 0 else 1
+        sign_b = -1 if pgb < 0 else 1
+        sign_c = -1 if pgc < 0 else 1
+        b.setValues(R.ADDR_METER_CURRENT_A, R.i32(int(gia * sign_a * 100)))
+        b.setValues(R.ADDR_METER_CURRENT_B, R.i32(int(gib * sign_b * 100)))
+        b.setValues(R.ADDR_METER_CURRENT_C, R.i32(int(gic * sign_c * 100)))
+        # Active power totale a 37119 (NON 37113! quello sono le correnti)
         grid_total = g("DeyeModbusGridTotal")
         if grid_total is None:
-            pga = g("DeyeModbusGridAPower") or 0
-            pgb = g("DeyeModbusGridBPower") or 0
-            pgc = g("DeyeModbusGridCPower") or 0
             grid_total = pga + pgb + pgc
         b.setValues(R.ADDR_METER_ACTIVE_POWER, R.i32(int(grid_total)))
+        # Active power per phase
+        b.setValues(R.ADDR_METER_ACTIVE_POWER_A, R.i32(int(pga)))
+        b.setValues(R.ADDR_METER_ACTIVE_POWER_B, R.i32(int(pgb)))
+        b.setValues(R.ADDR_METER_ACTIVE_POWER_C, R.i32(int(pgc)))
 
         # mark update success
         self._last_update_ts = time.time()

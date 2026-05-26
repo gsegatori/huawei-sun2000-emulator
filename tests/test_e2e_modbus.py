@@ -95,6 +95,23 @@ async def test_modbus_server_serves_huawei_registers():
             for uid in (0, 13, 100, 247):
                 rr = await client.read_holding_registers(R.ADDR_ACTIVE_POWER, count=2, slave=uid)
                 assert not rr.isError(), f"unit_id={uid} should also reply (single=True), got {rr}"
+
+            # Read dei blocchi che la Viaris richiede ciclicamente
+            # (pattern catturato dai log: 32016+66, 37001+4, 37101+38,
+            # 37738+13, 47077+2).
+            for addr, cnt in [(32016, 66), (37001, 4), (37101, 38),
+                              (37738, 13), (37743, 2), (37750, 1),
+                              (47077, 2)]:
+                rr = await client.read_holding_registers(addr, count=cnt, slave=1)
+                assert not rr.isError(), f"Viaris block read {addr}+{cnt} failed: {rr}"
+
+            # La Viaris scrive su 47077 (control register). Deve essere accettata.
+            wr = await client.write_registers(47077, [1, 0], slave=1)
+            assert not wr.isError(), f"write 47077 failed: {wr}"
+            # E ripeggere dopo write
+            rr = await client.read_holding_registers(47077, count=2, slave=1)
+            assert not rr.isError()
+            assert rr.registers == [1, 0], f"read-after-write 47077 = {rr.registers}"
         finally:
             client.close()
     finally:
