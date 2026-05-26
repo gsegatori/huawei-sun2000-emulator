@@ -53,46 +53,43 @@ DEYE_ITEMS = [
 ]
 
 
-# ROUND 1 — test diagnostico: isolare la fonte del campo "Battery" Viaris.
+# ROUND 2 — test diagnostico: cambio SOLO il PV (32064) per confermare Solar
+# e capire se Home/Rete dipendono da PV o da altro.
 #
-# Hp da verificare: "Battery" della Viaris segue 32080 (Active Power AC)?
+# Conclusione Round 1: "Battery" della Viaris e' CALCOLATO dal bilancio
+# Solar - Home + Rete_export. NON e' letto dai registri 32080/37001/37750.
 #
-# Scenario simulato (cambia SOLO active_power rispetto al round precedente,
-# tutto il resto resta uguale per non confondere):
-#   PV produce 9000 W
-#   Inverter AC out = 4321 W (NUOVO, era 6000)  <-- valore-spia univoco
-#   Battery_charge = PV - AC = 9000 - 4321 = 4679 W (verra' scritto a 37001)
-#   Load = 2321 W  (= AC - Grid_export = 4321 - 2000)
-#   Grid_total = -2000 W (export, invariato)
+# Cambia SOLO PV rispetto a Round 1:
+#   PV: 9000 -> 7777 W  <-- valore-spia univoco
+#   Inverter AC out = 4321 W (INVARIATO)
+#   Load = 2321 W (INVARIATO)
+#   Grid = -2000 W (INVARIATO)
+#   Battery_charge derivato = 7777 - 4321 = 3456 W (cambia per coerenza)
 #
-# Bilancio: 9000 = 4321 + 4679 ✓ ; 4321 = 2321 + 2000 ✓
-#
-# PREDIZIONI Viaris display:
-#   Solar          = 9.0 kW (legge 32064 -> invariato)
-#   Battery        =
-#       SE 4.32 kW -> conferma 32080 (Active Power) come fonte (bug Viaris)
-#       SE 4.68 kW -> conferma 37001 (battery_charge_discharge_power)
-#       SE 6.0 kW  -> qualche cache, niente cambio
-#       SE altro   -> da indagare
-#   Casa           = 2.32 kW (se derivato bilancio), ~ Load 2.32
-#   Rete           = -2.0 kW (Grid invariato)
+# PREDIZIONI Viaris display dopo questo Round:
+#   Solar       = 7.78 kW (se segue 32064 come ipotizzato)
+#   Battery     = Solar - Home + Rete_export = 7.78 - 0.49 + 0.66 = 7.95 kW
+#                (se la Viaris fa lo stesso bilancio del Round 1)
+#   Home        = 0.49 kW invariato (se non dipende da PV)
+#   Rete        = 0.66 kW invariato (se non dipende da PV)
+#   SoC         = 75% invariato
 MOCK_ITEMS: dict[str, float] = {
-    # PV input DC invariato
-    "DeyeModbusPv1Power": 4500.0,
-    "DeyeModbusPv2Power": 4500.0,
-    "DeyeModbusPvPower": 9000.0,
-    # Inverter AC output - VALORE SPIA Round 1: 4321 W
-    "DeyeModbusInverterAPower": 1421.0,  # somma totale = 4321
+    # PV input DC - VALORE SPIA Round 2: 7777 W
+    "DeyeModbusPv1Power": 3888.0,
+    "DeyeModbusPv2Power": 3889.0,
+    "DeyeModbusPvPower": 7777.0,
+    # Inverter AC output INVARIATO (Round 1)
+    "DeyeModbusInverterAPower": 1421.0,
     "DeyeModbusInverterBPower": 1450.0,
     "DeyeModbusInverterCPower": 1450.0,
-    "DeyeModbusInverterTotal": 4321.0,   # <-- valore-spia
+    "DeyeModbusInverterTotal": 4321.0,
     "DeyeModbusInverterACurrent": 6.5,
     "DeyeModbusInverterBCurrent": 6.3,
     "DeyeModbusInverterCCurrent": 6.0,
     "DeyeModbusInverterAVoltage": 220.0,
     "DeyeModbusInverterBVoltage": 230.0,
     "DeyeModbusInverterCVoltage": 240.0,
-    # Grid meter invariato a -2000 W (export)
+    # Grid meter INVARIATO (-2000 export)
     "DeyeModbusGridTotal": -2000.0,
     "DeyeModbusGridAPower": -700.0,
     "DeyeModbusGridBPower": -600.0,
@@ -100,9 +97,9 @@ MOCK_ITEMS: dict[str, float] = {
     "DeyeModbusGridACurrent": 3.0,
     "DeyeModbusGridBCurrent": 2.9,
     "DeyeModbusGridCCurrent": 2.8,
-    # Load house: 2321 W (= 4321 - 2000)
+    # Load INVARIATO
     "DeyeModbusLoadTotal": 2321.0,
-    # Battery: SoC 75% invariato, charge_p derivato in apply_values = 9000 - 4321 = 4679
+    # Battery: SoC 75% invariato; battery_charge derivato = 7777-4321 = 3456 W
     "DeyeModbusBatterySoc": 75.0,
     "DeyeModbusBatteryTemp": 28.0,
     "DeyeModbusAcTemp": 35.0,
