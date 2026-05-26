@@ -262,22 +262,34 @@ class HuaweiModbusEmulator:
 
 def _trace_request(request, *client_addr):
     """Logga e accoda ogni request Modbus in arrivo (pymodbus 3.7 API).
-    Signature: (request, host, port) — vedi pymodbus.server.requesthandler."""
+    Per le write (FC=6, 15, 16) include anche i values scritti."""
     fc = getattr(request, "function_code", None)
     addr = getattr(request, "address", None)
     cnt = getattr(request, "count", None)
     uid = getattr(request, "slave_id", None)
+    # FC=16 (WriteMultipleRegisters): request.values = list[int]
+    # FC=6  (WriteSingleRegister):    request.value  = int
+    values = getattr(request, "values", None)
+    if values is None:
+        v = getattr(request, "value", None)
+        if v is not None:
+            values = [v]
     entry = {
         "ts": time.time(),
         "fc": fc,
         "address": addr,
         "count": cnt,
         "unit_id": uid,
+        "values": list(values) if values is not None else None,
         "client": ":".join(str(p) for p in client_addr) if client_addr else None,
     }
     RECENT_PDU.append(entry)
-    log.info("Modbus REQ fc=%s addr=%s count=%s unit=%s client=%s",
-             fc, addr, cnt, uid, entry["client"])
+    if values is not None:
+        log.info("Modbus WRITE fc=%s addr=%s values=%s unit=%s client=%s",
+                 fc, addr, values, uid, entry["client"])
+    else:
+        log.info("Modbus REQ fc=%s addr=%s count=%s unit=%s client=%s",
+                 fc, addr, cnt, uid, entry["client"])
 
 
 async def run_modbus_server(emulator: HuaweiModbusEmulator, host: str, port: int) -> None:
