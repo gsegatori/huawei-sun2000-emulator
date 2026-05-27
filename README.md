@@ -42,10 +42,10 @@ Il container Docker:
 
 ## Lo "imbroglio" Viaris
 
-Reverse-engineering empirico (5 round mock + round live) ha mostrato che la
-Viaris **non legge i registri 1:1**, ma calcola valori derivati con
-formule specifiche. Per ottenere display corretti l'emulatore deve scrivere
-nei registri valori "ingannati":
+Reverse-engineering empirico (5+ round mock + live giorno/notte/surplus alto)
+ha mostrato che la Viaris **non legge i registri 1:1**, ma calcola valori
+derivati con formule specifiche. Per ottenere display corretti l'emulatore
+deve scrivere nei registri valori "ingannati":
 
 | Registro | Cosa scrive l'emulatore | Perché |
 |---|---|---|
@@ -56,9 +56,24 @@ nei registri valori "ingannati":
 | `37743` Storage Unit 1 charge | **stesso clamp di 37001** | Di notte formula Home = `32080 + \|37743\|`; clamp dimezza per matchare AC_real |
 | `37107` Meter current A | **`Grid_total / V_A`** (con segno) | Display Rete = `−V_A × I_A` → mostra `−Grid_total` invece di solo fase A |
 | `37109/11` Meter currents B/C | **`Grid_total / 3 / V_phase`** | Sum V×I_meter = Grid_total senza squilibri |
+| `37113` Meter Active Power | **`−Grid_total`** (segno opposto!) | Formula Home = `2×AC_mock − PV − 37113` → con 37113 = `−Grid_total` torna `AC_real − Grid_total = Load_real` |
 | `37738` Storage SoC | SoC del Deye × 10 | Letto direttamente |
 
 In `app/server.py:apply_values()` c'è tutto il dettaglio.
+
+### Bilancio Viaris display
+
+La Viaris calcola Casa internamente come **bilancio energetico**:
+```
+Casa = Solar − Battery + Inst.power
+```
+
+Convention segno `Inst.power` (= `Rete`):
+- **positivo** = import dalla rete
+- **negativo** = export verso rete
+
+Con tutti gli imbrogli applicati, il bilancio dà sempre `Casa = Load_real` in
+qualunque scenario (giorno, notte, surplus alto + grosso export, ecc.).
 
 ## Formule display Viaris confermate
 
