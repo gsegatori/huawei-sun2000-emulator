@@ -46,13 +46,10 @@ def test_apply_voltages_and_currents():
     # tensioni in V*10
     assert R.decode_u16(e.read_register(R.ADDR_GRID_VOLTAGE_A, 1)) == int(238.7 * 10)
     assert R.decode_u16(e.read_register(R.ADDR_GRID_VOLTAGE_B, 1)) == int(242.1 * 10)
-    # correnti inverter A/B/C IMBROGLIATE: I_phase = AC_mock/3/V_phase * 1000
-    # AC_mock = |battery_real|/2 = 1477, V_A=238.7
-    # I_A = 1477/3/238.7 * 1000 = 2062
-    assert R.decode_i32(e.read_register(R.ADDR_GRID_CURRENT_A, 2)) == 2062
-    # active power totale -- imbroglio universale: AC_mock = |battery_real|/2
-    # PV=7042, AC_real=9996, battery_real=-2954, |battery|/2=1477
-    assert R.decode_i32(e.read_register(R.ADDR_ACTIVE_POWER, 2)) == 1477
+    # AC_mock = 8519, V_A=238.7. I_A = 8519/3/238.7*1000 = 11896
+    assert R.decode_i32(e.read_register(R.ADDR_GRID_CURRENT_A, 2)) == 11896
+    # AC_mock = (PV+AC_real)/2 = (7042+9996)/2 = 8519
+    assert R.decode_i32(e.read_register(R.ADDR_ACTIVE_POWER, 2)) == 8519
     # PV input
     assert R.decode_i32(e.read_register(R.ADDR_INPUT_POWER, 2)) == 7042
     # temperatura interna °C*10
@@ -85,16 +82,15 @@ def test_battery_power_i32_signed():
     - scarica. 37750 e' bus voltage U16 V*10 (NON power). 37000/37741
     running status = 1 standby quando |charge_p|<=50W, 2 running altrimenti."""
     e = _make()
-    # Caso 1: battery carica (+6000 W). AC_mock = |battery_real|/2 = 3000.
-    # Clamp |37001| <= AC_mock = 3000.
+    # Caso 1: batt carica. AC_mock=(8000+2000)/2=5000, clamp |37001|<=5000.
     e.apply_values({"DeyeModbusPvPower": 8000, "DeyeModbusInverterTotal": 2000})
-    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 3000
-    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == 3000
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 5000
+    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == 5000
     assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 2
-    # Caso 2: batteria scarica. AC_mock = |5316|/2 = 2658. Clamp a -2658.
+    # Caso 2: batt scarica. AC_mock=(545+5861)/2=3203, clamp -3203.
     e.apply_values({"DeyeModbusPvPower": 545, "DeyeModbusInverterTotal": 5861})
-    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -2658
-    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == -2658
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -3203
+    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == -3203
     # Caso 3: standby
     e.apply_values({"DeyeModbusPvPower": 1000, "DeyeModbusInverterTotal": 1010})
     assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 1

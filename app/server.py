@@ -182,16 +182,10 @@ class HuaweiModbusEmulator:
             pb = g("DeyeModbusInverterBPower") or 0
             pc = g("DeyeModbusInverterCPower") or 0
             active_total_real = pa + pb + pc
-        # IMBROGLIO UNIVERSALE: AC_mock = |battery_real| / 2
-        # La Viaris ha 2 formule per Battery in base a AC_mock vs PV/2:
-        #   AC_mock < PV/2 (surplus PV alto): Battery_display = 2*AC_mock
-        #   AC_mock > PV/2 (notte/scarica):   Battery_display = 2*(PV-AC_mock)
-        # In entrambi i casi, scrivendo AC_mock = |battery_real|/2 si ottiene
-        # |Battery_display| = |battery_real| (con segno via 37001).
-        # E Casa = max(0, Solar - Battery - Rete) (bilancio Viaris) = Load_real
-        # automaticamente in tutti gli scenari.
-        battery_real_signed = (pv_tot or 0) - (active_total_real or 0)  # +carica/-scarica
-        active_total = abs(battery_real_signed) / 2
+        # AC_mock = (PV + AC_real) / 2 — formula classica che ha funzionato
+        # nei round 1-5 + notte + surplus alto mock (Grid=0 in tutti i casi).
+        # Quando Grid e' grande (export forte live), serve indagine ulteriore.
+        active_total = ((pv_tot or 0) + (active_total_real or 0)) / 2
         b.setValues(R.ADDR_ACTIVE_POWER, R.i32(int(active_total)))
 
         # IMBROGLIO correnti inverter (32072/74/76): distribuisco AC_mock
