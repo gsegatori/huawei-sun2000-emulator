@@ -243,11 +243,15 @@ class HuaweiModbusEmulator:
             # P_batt = P_pv - P_inverter_real_out
             # >0 = batteria carica, <0 = batteria scarica.
             charge_p = int((pv_tot or 0) - (active_total_real or 0))
-            # Clamp |37001| <= |AC_mock| SEMPRE (formula Viaris confermata
-            # nei mock notte E coerente con formule day 2*AC_mock-PV).
+            # Clamp |37001| <= |AC_mock| (sicurezza overflow notte).
             ac_mock_int = max(int(active_total), 1)
             charge_p_clamped = max(-ac_mock_int, min(ac_mock_int, charge_p))
-            b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, R.i32(charge_p_clamped))
+            # Viaris display Battery = 2 * 37001 (formula firmware aggiornato).
+            # Per ottenere display = battery_real scriviamo 37001 = charge_p/2.
+            # Caso notte (PV=0, charge_p=-AC): clamp interviene a -AC_mock = -AC/2,
+            # e charge_p/2 = -AC/2 → SAME VALUE → formula notte resta coerente.
+            charge_p_for_display = charge_p_clamped // 2
+            b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, R.i32(charge_p_for_display))
             # Running status: 0=offline,1=standby,2=running,3=fault,4=sleep.
             # Per battery in scarica/carica usiamo "running" (2); standby per ~0.
             bat_status = 2 if abs(charge_p) > 50 else 1
@@ -261,10 +265,8 @@ class HuaweiModbusEmulator:
             b.setValues(R.ADDR_STORAGE_UNIT_1_BUS_CURRENT, R.i16(int((charge_p / 720) * 10)))
             b.setValues(R.ADDR_STORAGE_UNIT_1_TEMPERATURE, R.i16(int(btemp * 10)))
             # 37743 = VERO charge/discharge power Unit 1 (I32 W signed).
-            # Stesso clamp di 37001: la Viaris di notte sembra usare anche
-            # 37743 per derivare Home (probabile formula Home=32080+|37743|).
-            # Senza clamp, |37743|=AC_real -> Home sballato 1.5x.
-            b.setValues(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, R.i32(charge_p_clamped))
+            # Stesso fix di 37001: Viaris display fa 2x del registro.
+            b.setValues(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, R.i32(charge_p_for_display))
 
         # Smart meter Huawei (37100+) - layout ufficiale (NON il generico DTSU666).
         # Le correnti stanno a 37107, l'active power totale a 37113.

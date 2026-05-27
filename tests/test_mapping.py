@@ -80,17 +80,22 @@ def test_apply_handles_missing_values():
 def test_battery_power_i32_signed():
     """37001 e 37743 sono I32 W signed (spec ufficiale Huawei): + carica,
     - scarica. 37750 e' bus voltage U16 V*10 (NON power). 37000/37741
-    running status = 1 standby quando |charge_p|<=50W, 2 running altrimenti."""
+    running status = 1 standby quando |charge_p|<=50W, 2 running altrimenti.
+    Viaris firmware aggiornato fa Display Battery = 2 * 37001 -> scriviamo
+    charge_p_clamped // 2 cosi' display = charge_p_real."""
     e = _make()
-    # Caso 1: batt carica. AC_mock=(8000+2000)/2=5000, clamp |37001|<=5000.
+    # Caso 1: batt carica. PV=8000, AC=2000, charge_p=6000, ac_mock=5000.
+    # clamp -> 5000, scritto 5000//2 = 2500. Display Viaris: 2*2500=5000 (close to 6000 real).
     e.apply_values({"DeyeModbusPvPower": 8000, "DeyeModbusInverterTotal": 2000})
-    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 5000
-    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == 5000
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 2500
+    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == 2500
     assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 2
-    # Caso 2: batt scarica. AC_mock=(545+5861)/2=3203, clamp -3203.
+    # Caso 2: batt scarica. PV=545, AC=5861, charge_p=-5316, ac_mock=3203,
+    # clamp -> -3203, scritto -3203//2 = -1602 (Python floor div verso -inf).
+    # Display Viaris: 2*-1602=-3204 (close to -3203 clamp).
     e.apply_values({"DeyeModbusPvPower": 545, "DeyeModbusInverterTotal": 5861})
-    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -3203
-    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == -3203
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -1602
+    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == -1602
     # Caso 3: standby
     e.apply_values({"DeyeModbusPvPower": 1000, "DeyeModbusInverterTotal": 1010})
     assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 1
