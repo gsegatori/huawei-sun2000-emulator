@@ -103,7 +103,8 @@ def test_apply_negative_grid_power():
     """Grid power negativo (export) deve essere preservato come signed I32."""
     e = _make()
     e.apply_values({"DeyeModbusGridTotal": -3500})  # esporto 3.5 kW
-    assert R.decode_i32(e.read_register(R.ADDR_METER_ACTIVE_POWER, 2)) == -3500
+    # 37113 imbroglio: -Grid_total = +3500 (per fissare Home Viaris)
+    assert R.decode_i32(e.read_register(R.ADDR_METER_ACTIVE_POWER, 2)) == 3500
 
 
 def test_update_marks_last_ok():
