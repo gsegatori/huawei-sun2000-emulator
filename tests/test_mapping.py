@@ -81,22 +81,39 @@ def test_battery_power_i32_signed():
     """37001 e 37743 sono I32 W signed (spec ufficiale Huawei): + carica,
     - scarica. 37750 e' bus voltage U16 V*10 (NON power). 37000/37741
     running status = 1 standby quando |charge_p|<=50W, 2 running altrimenti.
-    Viaris firmware aggiornato fa Display Battery = 2 * 37001 -> scriviamo
-    charge_p_clamped // 2 cosi' display = charge_p_real."""
+    Viaris firmware nuovo: display Battery = 2 * 37001 di giorno (PV>50),
+    formula notte (PV<=50) max(2*32080, 2*|37001|) * sign di 37001."""
     e = _make()
-    # Caso 1: batt carica. PV=8000, AC=2000, charge_p=6000, ac_mock=5000.
-    # clamp -> 5000, scritto 5000//2 = 2500. Display Viaris: 2*2500=5000 (close to 6000 real).
-    e.apply_values({"DeyeModbusPvPower": 8000, "DeyeModbusInverterTotal": 2000})
-    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 2500
-    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == 2500
+
+    # Caso 1: GIORNO + surplus alto (Round mock). PV=5000, AC=500, charge_p=4500.
+    # ac_mock=2750. Day branch: 37001 = 4500//2 = 2250. Display Viaris = 4500 = real ✓.
+    e.apply_values({"DeyeModbusPvPower": 5000, "DeyeModbusInverterTotal": 500})
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 2250
+    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == 2250
+
+    # Caso 2: GIORNO autoconsumo (Round 5). PV=4000, AC=3500, charge_p=500.
+    # Day: 37001 = 250. Display = 500 = real ✓.
+    e.apply_values({"DeyeModbusPvPower": 4000, "DeyeModbusInverterTotal": 3500})
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 250
     assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 2
-    # Caso 2: batt scarica. PV=545, AC=5861, charge_p=-5316, ac_mock=3203,
-    # clamp -> -3203, scritto -3203//2 = -1602 (Python floor div verso -inf).
-    # Display Viaris: 2*-1602=-3204 (close to -3203 clamp).
-    e.apply_values({"DeyeModbusPvPower": 545, "DeyeModbusInverterTotal": 5861})
-    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -1602
-    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == -1602
-    # Caso 3: standby
+
+    # Caso 3: GIORNO scarica (tramonto, PV<AC). PV=1000, AC=3500, charge_p=-2500.
+    # Day: 37001 = -2500//2 = -1250. Display = -2500 = real ✓.
+    e.apply_values({"DeyeModbusPvPower": 1000, "DeyeModbusInverterTotal": 3500})
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -1250
+
+    # Caso 4: NOTTE (PV=0). AC=2000, charge_p=-2000, ac_mock=1000.
+    # Night branch: keep old clamp ±ac_mock -> 37001 = -1000.
+    # Display formula notte: max(2*32080, 2*|37001|)*sign = max(2000,2000)*-1 = -2000 ✓.
+    e.apply_values({"DeyeModbusPvPower": 0, "DeyeModbusInverterTotal": 2000})
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -1000
+
+    # Caso 5: live (carica leggera, batteria piena). PV=5657, AC=5428, charge_p=229.
+    # Day: 37001 = 114. Display = 228 ≈ real 229 ✓.
+    e.apply_values({"DeyeModbusPvPower": 5657, "DeyeModbusInverterTotal": 5428})
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 114
+
+    # Caso 6: standby (carica trascurabile)
     e.apply_values({"DeyeModbusPvPower": 1000, "DeyeModbusInverterTotal": 1010})
     assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 1
     # 37750 e' bus voltage (NON power): deve essere ~7200 (720 V LUNA2000)

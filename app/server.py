@@ -243,14 +243,18 @@ class HuaweiModbusEmulator:
             # P_batt = P_pv - P_inverter_real_out
             # >0 = batteria carica, <0 = batteria scarica.
             charge_p = int((pv_tot or 0) - (active_total_real or 0))
-            # Clamp |37001| <= |AC_mock| (sicurezza overflow notte).
             ac_mock_int = max(int(active_total), 1)
-            charge_p_clamped = max(-ac_mock_int, min(ac_mock_int, charge_p))
-            # Viaris display Battery = 2 * 37001 (formula firmware aggiornato).
-            # Per ottenere display = battery_real scriviamo 37001 = charge_p/2.
-            # Caso notte (PV=0, charge_p=-AC): clamp interviene a -AC_mock = -AC/2,
-            # e charge_p/2 = -AC/2 → SAME VALUE → formula notte resta coerente.
-            charge_p_for_display = charge_p_clamped // 2
+            # Viaris firmware nuovo: display Battery = 2 * 37001 (di giorno).
+            # Di notte (PV=0) la formula vecchia max(2*AC_mock, 2*|37001|)*sign
+            # potrebbe essere ancora attiva: in quel caso un valore con |37001|<=AC_mock
+            # produce display = ±AC_real (corretto).
+            # Strategia:
+            #   - Giorno (PV>50): scrivi charge_p/2 SENZA clamp (display = real).
+            #   - Notte (PV<=50):  mantieni il vecchio clamp ±AC_mock.
+            if (pv_tot or 0) > 50:
+                charge_p_for_display = charge_p // 2
+            else:
+                charge_p_for_display = max(-ac_mock_int, min(ac_mock_int, charge_p))
             b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, R.i32(charge_p_for_display))
             # Running status: 0=offline,1=standby,2=running,3=fault,4=sleep.
             # Per battery in scarica/carica usiamo "running" (2); standby per ~0.
