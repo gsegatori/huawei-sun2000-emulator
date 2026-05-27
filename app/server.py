@@ -242,15 +242,10 @@ class HuaweiModbusEmulator:
             # P_batt = P_pv - P_inverter_real_out
             # >0 = batteria carica, <0 = batteria scarica.
             charge_p = int((pv_tot or 0) - (active_total_real or 0))
-            # Clamp 37001/37743 SOLO di notte (PV<50). Di notte la Viaris fa
-            # max(32080, |37001|) e senza clamp Home/Battery raddoppiano.
-            # Di giorno (PV>50) la Viaris usa formula diversa che richiede
-            # i valori battery reali; clamp di giorno sballa Home a 0.
-            if (pv_tot or 0) > 50:
-                charge_p_clamped = charge_p  # giorno: raw
-            else:
-                ac_mock_int = max(int(active_total), 1)
-                charge_p_clamped = max(-ac_mock_int, min(ac_mock_int, charge_p))
+            # Clamp |37001| <= |AC_mock| SEMPRE (formula Viaris confermata
+            # nei mock notte E coerente con formule day 2*AC_mock-PV).
+            ac_mock_int = max(int(active_total), 1)
+            charge_p_clamped = max(-ac_mock_int, min(ac_mock_int, charge_p))
             b.setValues(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, R.i32(charge_p_clamped))
             # Running status: 0=offline,1=standby,2=running,3=fault,4=sleep.
             # Per battery in scarica/carica usiamo "running" (2); standby per ~0.

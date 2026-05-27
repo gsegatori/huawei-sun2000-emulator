@@ -85,16 +85,16 @@ def test_battery_power_i32_signed():
     - scarica. 37750 e' bus voltage U16 V*10 (NON power). 37000/37741
     running status = 1 standby quando |charge_p|<=50W, 2 running altrimenti."""
     e = _make()
-    # Caso 1: PV>50 (giorno), batteria carica (+6000 W). Clamp NON applicato.
+    # Caso 1: battery carica (+6000 W). Clamp a |AC_mock| sempre.
+    # AC_mock = (8000+2000)/2 = 5000 -> charge clamped a +5000.
     e.apply_values({"DeyeModbusPvPower": 8000, "DeyeModbusInverterTotal": 2000})
-    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 6000
-    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == 6000
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == 5000
+    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == 5000
     assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 2
-    # Caso 2: PV>50 (giorno con surplus alto), batteria scarica.
-    # 545W > 50W, quindi giorno: clamp NON applicato, valore raw -5316.
+    # Caso 2: batteria scarica. AC_mock = (545+5861)/2 = 3203. Clamp a -3203.
     e.apply_values({"DeyeModbusPvPower": 545, "DeyeModbusInverterTotal": 5861})
-    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -5316
-    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == -5316
+    assert R.decode_i32(e.read_register(R.ADDR_BATTERY_CHARGE_DISCHARGE_POWER, 2)) == -3203
+    assert R.decode_i32(e.read_register(R.ADDR_STORAGE_UNIT_1_CHARGE_DISCHARGE_POWER, 2)) == -3203
     # Caso 3: standby
     e.apply_values({"DeyeModbusPvPower": 1000, "DeyeModbusInverterTotal": 1010})
     assert R.decode_u16(e.read_register(R.ADDR_BATTERY_RUNNING_STATUS, 1)) == 1
