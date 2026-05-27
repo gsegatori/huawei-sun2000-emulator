@@ -272,24 +272,24 @@ class HuaweiModbusEmulator:
         b.setValues(R.ADDR_METER_VOLTAGE_A, R.i32(int(va * 10)))
         b.setValues(R.ADDR_METER_VOLTAGE_B, R.i32(int(vb * 10)))
         b.setValues(R.ADDR_METER_VOLTAGE_C, R.i32(int(vc * 10)))
-        # Active power totale a 37113 (I32, W, +import / -export).
+        # Active power meter a 37113 (I32, W signed).
+        # IMBROGLIO: la Viaris usa 37113 nella formula Home = 2*AC_mock - PV - 37113.
+        # Per ottenere Home = Load_real, serve 37113 = -Grid_total (segno opposto).
+        # Bilancio fisico: Load = AC_real - Grid_total -> 37113 = -Grid_total
+        # = AC_real - Load fa quadrare la formula.
         pga = g("DeyeModbusGridAPower") or 0
         pgb = g("DeyeModbusGridBPower") or 0
         pgc = g("DeyeModbusGridCPower") or 0
         grid_total = g("DeyeModbusGridTotal")
         if grid_total is None:
             grid_total = pga + pgb + pgc
-        b.setValues(R.ADDR_METER_ACTIVE_POWER, R.i32(int(grid_total)))
+        b.setValues(R.ADDR_METER_ACTIVE_POWER, R.i32(int(-grid_total)))
 
-        # ────────── IMBROGLIO Grid_A_phase per fissare Home ──────────
-        # Formula Viaris Home = 2*AC_mock - PV - Grid_A_phase.
-        # Per ottenere Home = Load_real, serve Grid_A_phase = -Grid_total
-        # (bilancio fisico: AC_real - Load = -Grid_total).
-        # Quindi V*I_A_meter = -Grid_total -> I_A_meter = -Grid_total/V_A.
-        # Test: se Viaris legge Rete da 37113 direttamente, rimane corretto.
-        # Se legge V*I_A_meter, Rete cambia segno (trade-off da valutare).
+        # ────────── IMBROGLIO Rete display = -Grid_total ──────────
+        # La Viaris display "Rete" = -V*I_A_meter. Per ottenere Rete=-Grid_total
+        # (segno positivo Viaris = export), scrivo V*I_A_meter = Grid_total.
         v_a_imbr = va if va > 0 else 230
-        i_a_imbroglio_centiA = int((-grid_total / v_a_imbr) * 100)
+        i_a_imbroglio_centiA = int((grid_total / v_a_imbr) * 100)
         b.setValues(R.ADDR_METER_CURRENT_A, R.i32(i_a_imbroglio_centiA))
         # Fasi B/C meter: distribuisco anche qui Grid_total/3/V cosi'
         # sum V_meter * I_meter = Grid_total (= valore Rete coerente).
