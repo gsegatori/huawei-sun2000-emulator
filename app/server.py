@@ -301,14 +301,10 @@ class HuaweiModbusEmulator:
         ):
             i_phase_centiA = int(((grid_total / 3) / v_phase) * 100) if v_phase > 0 else 0
             b.setValues(addr, R.i32(i_phase_centiA))
-        # Per il live view, recupero il valore raw del current A
+        # Per il live view, recupero il valore raw del current A/B/C
         gia = g("DeyeModbusGridACurrent") or 0
         gib = g("DeyeModbusGridBCurrent") or 0
         gic = g("DeyeModbusGridCCurrent") or 0
-        # Anche I_A_meter (override l'imbroglio Rete=Grid_total) la distribuisco
-        # uniforme insieme alle altre fasi per coerenza:
-        v_a_phase = va if va > 0 else 230
-        b.setValues(R.ADDR_METER_CURRENT_A, R.i32(int(((grid_total / 3) / v_a_phase) * 100)))
         b.setValues(R.ADDR_METER_REACTIVE_POWER, R.i32(0))  # no dato OH
         b.setValues(R.ADDR_METER_POWER_FACTOR, R.i16(1000))
         b.setValues(R.ADDR_METER_FREQUENCY, R.i16(5000))
