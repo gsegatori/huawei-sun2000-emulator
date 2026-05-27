@@ -281,16 +281,15 @@ class HuaweiModbusEmulator:
             grid_total = pga + pgb + pgc
         b.setValues(R.ADDR_METER_ACTIVE_POWER, R.i32(int(grid_total)))
 
-        # ────────── IMBROGLIO Rete = Grid_total (non Grid_A_phase) ──────────
-        # La Viaris calcola "Rete" come V_A * I_A_phase del meter.
-        # Su sistema trifase squilibrato, la fase A puo' esportare anche
-        # quando il totale e' import (e viceversa) -> display fuorviante.
-        # Imbroglio: scriviamo I_A_signed in modo che V_A * I_A = Grid_total.
-        # Cosi' la Viaris mostra Rete = -Grid_total (con segno corretto).
-        # Conseguenza positiva: anche "Battery" della Viaris si avvicina al
-        # battery_real grazie al bilancio interno (Solar-Home+Rete=-Battery).
+        # ────────── IMBROGLIO Grid_A_phase per fissare Home ──────────
+        # Formula Viaris Home = 2*AC_mock - PV - Grid_A_phase.
+        # Per ottenere Home = Load_real, serve Grid_A_phase = -Grid_total
+        # (bilancio fisico: AC_real - Load = -Grid_total).
+        # Quindi V*I_A_meter = -Grid_total -> I_A_meter = -Grid_total/V_A.
+        # Test: se Viaris legge Rete da 37113 direttamente, rimane corretto.
+        # Se legge V*I_A_meter, Rete cambia segno (trade-off da valutare).
         v_a_imbr = va if va > 0 else 230
-        i_a_imbroglio_centiA = int((grid_total / v_a_imbr) * 100)
+        i_a_imbroglio_centiA = int((-grid_total / v_a_imbr) * 100)
         b.setValues(R.ADDR_METER_CURRENT_A, R.i32(i_a_imbroglio_centiA))
         # Fasi B/C meter: distribuisco anche qui Grid_total/3/V cosi'
         # sum V_meter * I_meter = Grid_total (= valore Rete coerente).
