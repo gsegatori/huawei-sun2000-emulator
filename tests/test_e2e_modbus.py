@@ -60,10 +60,10 @@ async def test_modbus_server_serves_huawei_registers():
             assert not rr.isError()
             assert R.decode_u16(rr.registers) == 2350  # 235.0 * 10
 
-            # Active power - imbroglio attivo: (PV+AC_real)/2 = (6000+5432)/2 = 5716
+            # Active power - imbroglio universale: |battery_real|/2 = |6000-5432|/2 = 284
             rr = await client.read_holding_registers(R.ADDR_ACTIVE_POWER, count=2, slave=1)
             assert not rr.isError()
-            assert R.decode_i32(rr.registers) == 5716
+            assert R.decode_i32(rr.registers) == 284
 
             # Daily yield
             rr = await client.read_holding_registers(R.ADDR_DAILY_YIELD, count=2, slave=1)
